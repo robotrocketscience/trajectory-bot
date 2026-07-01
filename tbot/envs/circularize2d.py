@@ -69,11 +69,11 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
         self.cfg: Circularize2DConfig = config or Circularize2DConfig()
 
         # action: 2-D thrust direction * magnitude, each component in [-1, 1].
-        self.action_space: spaces.Box = spaces.Box(
+        self.action_space: spaces.Space[Act] = spaces.Box(
             low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
         # observation: 8-D normalized state (finite bounds; values are clipped).
         high: Obs = np.full(8, 10.0, dtype=np.float32)
-        self.observation_space: spaces.Box = spaces.Box(
+        self.observation_space: spaces.Space[Obs] = spaces.Box(
             low=-high, high=high, dtype=np.float32)
 
         self._state: Vec = np.zeros(4, dtype=np.float64)   # [x, y, vx, vy]
@@ -99,7 +99,7 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
             el.a / self._r_target - 1.0,
             el.e,
             el.r / length - 1.0,
-            self._fuel / self.cfg.dv_budget,
+            self._fuel / self.cfg.dv_budget if self.cfg.dv_budget > 0.0 else 0.0,
         ], dtype=np.float32)
         return np.clip(o, -10.0, 10.0)
 

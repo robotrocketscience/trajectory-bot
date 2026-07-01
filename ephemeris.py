@@ -113,21 +113,25 @@ def _horizons_vectors(spec: SpanSpec) -> tuple[Vec, Vec, Vec]:
     This is the single network entry point. Nothing else in this module imports
     astroquery. Tests monkeypatch this to avoid hitting the server.
     """
-    from astropy.table import Table          # type: ignore[import-untyped]
-    from astropy.time import Time            # type: ignore[import-untyped]
-    from astroquery.jplhorizons import Horizons  # type: ignore[import-untyped]
+    # astropy/astroquery are only partially typed; quarantine them behind Any so
+    # their imperfect annotations don't leak "unknown" types into strict checking.
+    from typing import cast
 
-    start_t = Time(spec.start, format="isot", scale="utc")
-    stop_t = Time(spec.stop, format="isot", scale="utc")
-    total_s = float((stop_t - start_t).to_value("s"))
+    from astropy.table import Table
+    from astropy.time import Time
+    from astroquery.jplhorizons import Horizons
+
+    start_t: Any = Time(spec.start, format="isot", scale="utc")
+    stop_t: Any = Time(spec.stop, format="isot", scale="utc")
+    total_s = float(cast(Any, (stop_t - start_t).to_value("s")))
     n_intervals = max(1, int(round(total_s / spec.step_s)))
 
-    obj = Horizons(
+    obj: Any = Horizons(
         id=spec.body_id,
         location=spec.location,
         epochs={"start": start_t.iso, "stop": stop_t.iso, "step": str(n_intervals)},
     )
-    vec = Table(obj.vectors())
+    vec: Any = Table(obj.vectors())
     times_jd: Vec = np.asarray(vec["datetime_jd"], dtype=np.float64)
     r: Vec = np.column_stack(
         [np.asarray(vec[c], dtype=np.float64) for c in ("x", "y", "z")]

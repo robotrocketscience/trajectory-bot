@@ -12,7 +12,7 @@ def register_envs() -> None:
     from gymnasium.envs.registration import register, registry
 
     if "TBot-Circularize2D-v0" not in registry:
-        register(
+        register(  # pyright: ignore[reportUnknownVariableType]
             id="TBot-Circularize2D-v0",
             entry_point="tbot.envs.circularize2d:Circularize2DEnv",
         )

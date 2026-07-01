@@ -60,18 +60,22 @@ def test_scripted_apoapsis_burn_is_solvable():
 
     terminated = truncated = False
     info: dict = {}
+    dv_per_step = env.cfg.thrust_acc_max * env.cfg.dt
     while not (terminated or truncated):
         s = env._state
         r = float(np.hypot(s[0], s[1]))
+        v = float(np.hypot(s[2], s[3]))
         el = orb.orbital_elements(s, env.cfg.mu)
         near_apo = abs(r - env._r_target) / env._r_target < 0.05
-        if el.e < env.cfg.e_tol:
+        v_circ = orb.speed_circular(r, env.cfg.mu)
+        if el.e < env.cfg.e_tol or not near_apo or v >= v_circ:
             action = np.zeros(2, dtype=np.float32)
-        elif near_apo:
-            vhat = np.array([s[2], s[3]]) / float(np.hypot(s[2], s[3]))
-            action = vhat.astype(np.float32)
         else:
-            action = np.zeros(2, dtype=np.float32)
+            # burn prograde, but only deliver the remaining velocity deficit so we
+            # settle onto the circular speed instead of overshooting it.
+            mag = min(1.0, (v_circ - v) / dv_per_step)
+            vhat = np.array([s[2], s[3]]) / v
+            action = (vhat * mag).astype(np.float32)
         _, _, terminated, truncated, info = env.step(action)
 
     assert info["success"] is True
