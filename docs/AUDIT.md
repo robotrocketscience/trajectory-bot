@@ -153,11 +153,13 @@ distance to the target kept *increasing*. Two dead ends are visible in the code:
 - Start with the **single-body, 2-D, continuous-thrust** case (circularize from
   an ellipse), where the optimum is Hohmann and the reward can be
   `−Δv_used` plus a terminal bonus for matching target orbital elements
-  (a, e, i) within tolerance. This is the author's own retrospective advice
-  (drop to 2-D, fewer variables) and gives a clean baseline to beat.
-- Only then scale to 3-D, plane changes, GEO transfer, and finally multi-body
-  (Earth–Moon, Earth–Mars, capture), where a patched-conic or CR3BP formulation
-  keeps episodes fast.
+  (a, e, i) within tolerance. 2-D is a **validation stepping-stone** that strips
+  the problem to the fewest failure modes — **not** the final design.
+- Then extend to **full 3-D attitude control**, which is the real target:
+  inclination / plane-change maneuvers are inherently 3-D and require the agent
+  to control orientation, not just in-plane thrust. Scale through plane changes,
+  GEO transfer, and finally multi-body (Earth–Moon, Earth–Mars, capture), where a
+  patched-conic or CR3BP formulation keeps episodes fast.
 
 ---
 
