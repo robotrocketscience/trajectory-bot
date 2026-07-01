@@ -1,0 +1,35 @@
+# ── Python ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+
+# ── Trained models / RL checkpoints (results, regenerate by training) ──
+tmp/
+*_torch_ppo
+*.pt
+*.pth
+*.pkl
+
+# ── Data & results artifacts (no blobs in git; generate at build/run time) ──
+*.csv
+plots/
+*.png
+*.jpg
+*.gif
+*.mp4
+
+# ── Report source blobs (converted copies live in docs/*.md) ──
+docs/reports-src/
+
+# ── Editor / OS cruft ──
+.~lock.*#
+*.swp
+.DS_Store
