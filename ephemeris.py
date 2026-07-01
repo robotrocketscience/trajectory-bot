@@ -15,10 +15,10 @@ across runs.
 
 Design goals (per project rule: batch, cache, idempotency):
   - One network call per unique (body, start, stop, step) span. Never per-step.
-  - Cache-hit path is pure disk I/O — no `astroquery`/network import needed.
+  - Cache-hit path is pure disk I/O — no ``astroquery``/network import needed.
   - Concurrent-safe writes (temp file + atomic rename); a half-written cache
     entry is never observed.
-  - The single network-touching function (`_horizons_vectors`) is isolated so
+  - The single network-touching function (``_horizons_vectors``) is isolated so
     tests can monkeypatch it and assert call counts.
 
 Units: positions returned in km, velocities in km/s, times as astropy Time.
@@ -30,15 +30,20 @@ import hashlib
 import json
 import os
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
+
+Vec = npt.NDArray[np.float64]
 
 # 1 au and 1 au/day in SI-derived units (IAU 2012 / CODATA).
-_KM_PER_AU = 1.495978707e8          # [km]
-_KMS_PER_AU_PER_DAY = _KM_PER_AU / 86400.0   # [km/s]  (~1731.46)
+_KM_PER_AU: float = 1.495978707e8          # [km]
+_KMS_PER_AU_PER_DAY: float = _KM_PER_AU / 86400.0   # [km/s]  (~1731.46)
 
-DEFAULT_CACHE_DIR = os.environ.get(
+DEFAULT_CACHE_DIR: str = os.environ.get(
     "TBOT_EPHEM_CACHE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), ".ephem_cache"),
 )
@@ -70,54 +75,51 @@ class SpanSpec:
 class Ephemeris:
     """Sampled state history for one body over a span.
 
-    times_jd: [N] TDB Julian dates of each sample.
-    r: [N, 3] position in km (in the `location` frame).
+    times_jd: [N] Julian dates of each sample.
+    r: [N, 3] position in km (in the ``location`` frame).
     v: [N, 3] velocity in km/s.
     """
 
     spec: SpanSpec
-    times_jd: np.ndarray
-    r: np.ndarray
-    v: np.ndarray
+    times_jd: Vec
+    r: Vec
+    v: Vec
 
-    def state_at_jd(self, jd: float) -> tuple[np.ndarray, np.ndarray]:
-        """Linear-interpolate (r, v) at Julian date `jd`.
+    def state_at_jd(self, jd: float) -> tuple[Vec, Vec]:
+        """Linear-interpolate (r, v) at Julian date ``jd``.
 
         Clamps to the span endpoints rather than extrapolating; callers should
         request spans that cover their whole trajectory horizon so clamping is
         never silently hit.
         """
         t = self.times_jd
-        if jd <= t[0]:
+        if jd <= float(t[0]):
             return self.r[0].copy(), self.v[0].copy()
-        if jd >= t[-1]:
+        if jd >= float(t[-1]):
             return self.r[-1].copy(), self.v[-1].copy()
-        i = int(np.searchsorted(t, jd) - 1)
-        frac = (jd - t[i]) / (t[i + 1] - t[i])
-        r = self.r[i] + frac * (self.r[i + 1] - self.r[i])
-        v = self.v[i] + frac * (self.v[i + 1] - self.v[i])
-        return r, v
+        i = int(np.searchsorted(t, jd)) - 1
+        frac = (jd - float(t[i])) / (float(t[i + 1]) - float(t[i]))
+        r_out: Vec = self.r[i] + frac * (self.r[i + 1] - self.r[i])
+        v_out: Vec = self.v[i] + frac * (self.v[i + 1] - self.v[i])
+        return r_out, v_out
 
 
 # --------------------------------------------------------------------------
 # The only function that touches the network. Isolated for testing/mocking.
 # --------------------------------------------------------------------------
-def _horizons_vectors(spec: SpanSpec) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _horizons_vectors(spec: SpanSpec) -> tuple[Vec, Vec, Vec]:
     """One bulk JPL Horizons vectors query for a span. Returns (times_jd, r_km, v_kms).
 
     This is the single network entry point. Nothing else in this module imports
     astroquery. Tests monkeypatch this to avoid hitting the server.
     """
-    from astropy.table import Table
-    from astroquery.jplhorizons import Horizons
-
-    # Number of sample intervals across the span (Horizons 'step' as an integer
-    # count yields count+1 rows). One query covers the ENTIRE span.
-    from astropy.time import Time
+    from astropy.table import Table          # type: ignore[import-untyped]
+    from astropy.time import Time            # type: ignore[import-untyped]
+    from astroquery.jplhorizons import Horizons  # type: ignore[import-untyped]
 
     start_t = Time(spec.start, format="isot", scale="utc")
     stop_t = Time(spec.stop, format="isot", scale="utc")
-    total_s = (stop_t - start_t).to_value("s")
+    total_s = float((stop_t - start_t).to_value("s"))
     n_intervals = max(1, int(round(total_s / spec.step_s)))
 
     obj = Horizons(
@@ -126,12 +128,12 @@ def _horizons_vectors(spec: SpanSpec) -> tuple[np.ndarray, np.ndarray, np.ndarra
         epochs={"start": start_t.iso, "stop": stop_t.iso, "step": str(n_intervals)},
     )
     vec = Table(obj.vectors())
-    times_jd = np.asarray(vec["datetime_jd"], dtype=float)
-    r = np.column_stack(
-        [np.asarray(vec[c], dtype=float) for c in ("x", "y", "z")]
+    times_jd: Vec = np.asarray(vec["datetime_jd"], dtype=np.float64)
+    r: Vec = np.column_stack(
+        [np.asarray(vec[c], dtype=np.float64) for c in ("x", "y", "z")]
     ) * _KM_PER_AU
-    v = np.column_stack(
-        [np.asarray(vec[c], dtype=float) for c in ("vx", "vy", "vz")]
+    v: Vec = np.column_stack(
+        [np.asarray(vec[c], dtype=np.float64) for c in ("vx", "vy", "vz")]
     ) * _KMS_PER_AU_PER_DAY
     return times_jd, r, v
 
@@ -144,11 +146,12 @@ def _manifest_path(cache_dir: str) -> str:
     return os.path.join(cache_dir, "manifest.json")
 
 
-def _load_manifest(cache_dir: str) -> dict:
+def _load_manifest(cache_dir: str) -> dict[str, Any]:
     p = _manifest_path(cache_dir)
     if os.path.exists(p):
         with open(p) as f:
-            return json.load(f)
+            data: dict[str, Any] = json.load(f)
+            return data
     return {}
 
 
@@ -162,7 +165,6 @@ def _update_manifest(cache_dir: str, spec: SpanSpec) -> None:
         "location": spec.location,
         "file": os.path.basename(_cache_path(cache_dir, spec)),
     }
-    # Atomic write so a crashed run never leaves a corrupt manifest.
     fd, tmp = tempfile.mkstemp(dir=cache_dir, suffix=".tmp")
     with os.fdopen(fd, "w") as f:
         json.dump(manifest, f, indent=2, sort_keys=True)
@@ -171,18 +173,23 @@ def _update_manifest(cache_dir: str, spec: SpanSpec) -> None:
 
 def get_span(spec: SpanSpec, *, cache_dir: str = DEFAULT_CACHE_DIR,
              allow_network: bool = True) -> Ephemeris:
-    """Return the ephemeris for `spec`, from cache if present else one bulk fetch.
+    """Return the ephemeris for ``spec``, from cache if present else one bulk fetch.
 
     Idempotent: calling repeatedly with the same spec makes exactly one network
     call total (on first miss); every later call is a disk load. If the cache is
-    present and `allow_network` is False, a miss raises instead of querying.
+    absent and ``allow_network`` is False, a miss raises instead of querying.
     """
     os.makedirs(cache_dir, exist_ok=True)
     path = _cache_path(cache_dir, spec)
 
     if os.path.exists(path):
         data = np.load(path)
-        return Ephemeris(spec, data["times_jd"], data["r"], data["v"])
+        return Ephemeris(
+            spec,
+            np.asarray(data["times_jd"], dtype=np.float64),
+            np.asarray(data["r"], dtype=np.float64),
+            np.asarray(data["v"], dtype=np.float64),
+        )
 
     if not allow_network:
         raise LookupError(
@@ -196,7 +203,6 @@ def get_span(spec: SpanSpec, *, cache_dir: str = DEFAULT_CACHE_DIR,
     fd, tmp = tempfile.mkstemp(dir=cache_dir, suffix=".npz.tmp")
     os.close(fd)
     np.savez(tmp, times_jd=times_jd, r=r, v=v)
-    # np.savez appends .npz to the given name; normalize.
     if os.path.exists(tmp + ".npz"):
         os.replace(tmp + ".npz", path)
         if os.path.exists(tmp):
@@ -207,25 +213,22 @@ def get_span(spec: SpanSpec, *, cache_dir: str = DEFAULT_CACHE_DIR,
     return Ephemeris(spec, times_jd, r, v)
 
 
-def bulk_fetch(body_ids, start: str, stop: str, step_s: int, *,
+def bulk_fetch(body_ids: Sequence[str], start: str, stop: str, step_s: int, *,
                location: str = "@sun", cache_dir: str = DEFAULT_CACHE_DIR,
-               allow_network: bool = True) -> dict:
+               allow_network: bool = True) -> dict[str, Ephemeris]:
     """Fetch/lookup many bodies over one span. One network call per uncached body.
 
     Returns {body_id: Ephemeris}. This is the entry point training code should
     use once, up front, to pre-populate the cache for a whole run.
     """
-    out = {}
+    out: dict[str, Ephemeris] = {}
     for bid in body_ids:
         spec = SpanSpec(str(bid), start, stop, int(step_s), location)
         out[str(bid)] = get_span(spec, cache_dir=cache_dir, allow_network=allow_network)
     return out
 
 
-if __name__ == "__main__":
-    # Prefetch CLI: populate the cache for a span in one bulk pass, then exit.
-    # Example:
-    #   python ephemeris.py 2021-05-03T00:00:00 2021-05-10T00:00:00 3600 399 301 10
+def _main() -> None:
     import sys
 
     if len(sys.argv) < 5:
@@ -236,5 +239,9 @@ if __name__ == "__main__":
     eph = bulk_fetch(bodies, start_iso, stop_iso, step)
     for bid, e in eph.items():
         print(f"body {bid}: {len(e.times_jd)} samples cached "
-              f"[{e.times_jd[0]:.3f} .. {e.times_jd[-1]:.3f} JD]")
+              f"[{float(e.times_jd[0]):.3f} .. {float(e.times_jd[-1]):.3f} JD]")
     print(f"cache dir: {DEFAULT_CACHE_DIR}")
+
+
+if __name__ == "__main__":
+    _main()

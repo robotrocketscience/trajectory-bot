@@ -13,10 +13,16 @@ env/
 
 # ── Trained models / RL checkpoints (results, regenerate by training) ──
 tmp/
+models/
+runs/
 *_torch_ppo
 *.pt
 *.pth
 *.pkl
+*.zip
+
+# ── uv / build ── (uv.lock IS committed for reproducibility)
+.venv*/
 
 # ── Ephemeris cache (bulk-fetched from JPL Horizons at run time; never commit) ──
 .ephem_cache/
