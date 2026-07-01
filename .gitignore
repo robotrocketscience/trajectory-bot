@@ -18,6 +18,10 @@ tmp/
 *.pth
 *.pkl
 
+# ── Ephemeris cache (bulk-fetched from JPL Horizons at run time; never commit) ──
+.ephem_cache/
+*.npz
+
 # ── Data & results artifacts (no blobs in git; generate at build/run time) ──
 *.csv
 plots/
