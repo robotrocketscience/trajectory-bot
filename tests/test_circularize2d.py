@@ -66,7 +66,9 @@ def test_scripted_apoapsis_burn_is_solvable():
         r = float(np.hypot(s[0], s[1]))
         v = float(np.hypot(s[2], s[3]))
         el = orb.orbital_elements(s, env.cfg.mu)
-        near_apo = abs(r - env._r_target) / env._r_target < 0.05
+        # burn only very near apoapsis: the band must be tighter than the
+        # success tolerance on a, else we circularize at the wrong radius.
+        near_apo = abs(r - env._r_target) / env._r_target < 0.01
         v_circ = orb.speed_circular(r, env.cfg.mu)
         if el.e < env.cfg.e_tol or not near_apo or v >= v_circ:
             action = np.zeros(2, dtype=np.float32)

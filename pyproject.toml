@@ -37,7 +37,7 @@ addopts = "-q"
 # Strict typing is enforced on the shipped library only. The 2021 code under
 # v2/ and archive/ is historical and intentionally excluded; the test suite is
 # checked in basic mode.
-include = ["tbot", "ephemeris.py"]
+include = ["tbot", "ephemeris.py", "horizons_backend.py"]
 exclude = ["v2", "archive", "tests", "scripts", "**/__pycache__", ".ephem_cache"]
 typeCheckingMode = "strict"
 pythonVersion = "3.12"

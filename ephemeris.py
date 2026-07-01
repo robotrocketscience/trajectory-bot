@@ -39,10 +39,6 @@ import numpy.typing as npt
 
 Vec = npt.NDArray[np.float64]
 
-# 1 au and 1 au/day in SI-derived units (IAU 2012 / CODATA).
-_KM_PER_AU: float = 1.495978707e8          # [km]
-_KMS_PER_AU_PER_DAY: float = _KM_PER_AU / 86400.0   # [km/s]  (~1731.46)
-
 DEFAULT_CACHE_DIR: str = os.environ.get(
     "TBOT_EPHEM_CACHE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), ".ephem_cache"),
@@ -110,36 +106,14 @@ class Ephemeris:
 def _horizons_vectors(spec: SpanSpec) -> tuple[Vec, Vec, Vec]:
     """One bulk JPL Horizons vectors query for a span. Returns (times_jd, r_km, v_kms).
 
-    This is the single network entry point. Nothing else in this module imports
-    astroquery. Tests monkeypatch this to avoid hitting the server.
+    Delegates to ``horizons_backend`` (the isolated untyped-library boundary).
+    This wrapper is the single network entry point; tests monkeypatch it to
+    avoid hitting the server.
     """
-    # astropy/astroquery are only partially typed; quarantine them behind Any so
-    # their imperfect annotations don't leak "unknown" types into strict checking.
-    from typing import cast
+    from horizons_backend import horizons_vectors
 
-    from astropy.table import Table
-    from astropy.time import Time
-    from astroquery.jplhorizons import Horizons
-
-    start_t: Any = Time(spec.start, format="isot", scale="utc")
-    stop_t: Any = Time(spec.stop, format="isot", scale="utc")
-    total_s = float(cast(Any, (stop_t - start_t).to_value("s")))
-    n_intervals = max(1, int(round(total_s / spec.step_s)))
-
-    obj: Any = Horizons(
-        id=spec.body_id,
-        location=spec.location,
-        epochs={"start": start_t.iso, "stop": stop_t.iso, "step": str(n_intervals)},
-    )
-    vec: Any = Table(obj.vectors())
-    times_jd: Vec = np.asarray(vec["datetime_jd"], dtype=np.float64)
-    r: Vec = np.column_stack(
-        [np.asarray(vec[c], dtype=np.float64) for c in ("x", "y", "z")]
-    ) * _KM_PER_AU
-    v: Vec = np.column_stack(
-        [np.asarray(vec[c], dtype=np.float64) for c in ("vx", "vy", "vz")]
-    ) * _KMS_PER_AU_PER_DAY
-    return times_jd, r, v
+    return horizons_vectors(spec.body_id, spec.start, spec.stop,
+                            spec.step_s, spec.location)
 
 
 def _cache_path(cache_dir: str, spec: SpanSpec) -> str:
