@@ -3,7 +3,7 @@
 """
 Created on Fri Feb 19 23:23:25 2021
 
-@author: yoshi
+@author: robotrocketscience
 """
 import gym
 import numpy as np

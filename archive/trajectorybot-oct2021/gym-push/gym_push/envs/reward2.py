@@ -3,7 +3,7 @@
 """
 Created on Mon Oct  4 19:59:17 2021
 
-@author: yoshi
+@author: robotrocketscience
 """
 
     reward = 0 #initialize reward at 0

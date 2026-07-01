@@ -3,7 +3,7 @@
 """
 Created on Mon Nov 22 11:36:12 2021
 
-@author: yoshi
+@author: robotrocketscience
 """
 from TBot_Inputs import *
                

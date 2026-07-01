@@ -3,7 +3,7 @@
 """
 Created on Mon Nov 22 11:20:21 2021
 
-@author: yoshi
+@author: robotrocketscience
 """
 import gym
 from gym import error, spaces, utils

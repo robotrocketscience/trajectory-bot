@@ -3,7 +3,7 @@
 """
 Created on Tue Nov 23 18:05:30 2021
 
-@author: yoshi
+@author: robotrocketscience
 """
 # http://kieranwynn.github.io/pyquaternion/
 

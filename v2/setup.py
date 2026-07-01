@@ -3,7 +3,7 @@
 """
 Created on Wed Nov 24 21:57:59 2021
 
-@author: yoshi
+@author: robotrocketscience
 """
 from setuptools import setup, find_packages
 

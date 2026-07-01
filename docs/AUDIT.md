@@ -1,6 +1,6 @@
 # TrajectoryBot — Code Audit (2026)
 
-Audit of the recovered 2021 ASTE 581 project. Goal: understand what it does,
+Audit of the recovered 2021 graduate astrodynamics course project. Goal: understand what it does,
 why it never learned a trajectory, and what to fix to make it a working,
 presentable project.
 
@@ -190,10 +190,9 @@ a *new* reward from §4 rather than reviving `reward2.py`.
 
 ## 7. Training hardware
 
-- **ws1** (10.0.0.1, `user@ws1`) — RTX 3060 12 GB, torch 2.10 + CUDA
-  available, `uv` installed. Primary trainer.
-- **ws2** (10.0.0.2, `user@ws2`) — GTX 1660 Ti 6 GB, 12 cores, 32 GB.
-  Secondary / parallel runs.
+- **Primary trainer** — a CUDA GPU workstation (RTX 3060 12 GB), torch 2.x + CUDA,
+  `uv`-managed environment.
+- **Secondary** — a second GPU box (GTX 1660 Ti 6 GB, 12 cores, 32 GB RAM) for
+  parallel runs.
 
-Both are available for training sweeps; PPO on this problem is small and will fit
-comfortably on either GPU.
+PPO on this problem is small and fits comfortably on either GPU.

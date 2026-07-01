@@ -3,7 +3,7 @@
 """
 Created on Mon Apr 26 18:27:27 2021
 
-@author: yoshi
+@author: robotrocketscience
 """
 
 import gym

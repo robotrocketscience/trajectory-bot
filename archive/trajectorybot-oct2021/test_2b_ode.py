@@ -3,7 +3,7 @@
 """
 Created on Sun Oct  3 17:49:57 2021
 
-@author: yoshi
+@author: robotrocketscience
 """
 
 # Imports

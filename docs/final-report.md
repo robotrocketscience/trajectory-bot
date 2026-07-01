@@ -1,9 +1,9 @@
 ***Utilizing Reinforcement Learning for Interplanetary Trajectory
 Optimization***
 
-***Final Project ASTE 581***
+***Final Project — Graduate Astrodynamics Course***
 
-***robotrocketscience 5/3/2021***
+***robotrocketscience — 2021***
 
 Reinforcement learning for trajectory optimization has great potential
 for mission planning. I zealously made sure to follow the progress
@@ -153,7 +153,7 @@ trained to achieve the desired behavior.
 Despite unsuccessfully programming a RL agent to optimize interplanetary
 trajectories, I learned a lot about modeling orbital mechanics, Python
 programming, and Reinforcement Learning as a technology. I intend on
-taking ASTE 583 next semester, and hope I will be able to work on this
+taking the follow-on course next semester, and hope I will be able to work on this
 particular project more. I am still optimistic about the possibility and
 benefit of using RL to accomplish mission planning tasks.
 
@@ -170,7 +170,7 @@ conda activate yourenvname
 
 type “conda list” and ensure all the following packages are installed:
 
-**\# packages in environment at /home/yoshi/anaconda3/envs/MLpy:**
+**\# packages in environment at /home/user/anaconda3/envs/MLpy:**
 
 **\#**
 

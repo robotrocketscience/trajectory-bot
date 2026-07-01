@@ -4,8 +4,8 @@ A from-scratch orbital-dynamics simulation stack driving a reinforcement-learnin
 agent that learns spacecraft maneuvers, benchmarked against analytically optimal
 transfers (Hohmann / bi-elliptic).
 
-Originally built in 2021 as a course project for **ASTE 581** (astrodynamics /
-"Orbital Dynamics II"). The agent trained but never converged on a useful
+Originally built in 2021 as a project for a graduate astrodynamics course
+("Orbital Dynamics II"). The agent trained but never converged on a useful
 trajectory. This repo revives the code to audit *why* and fix it into a
 presentable project.
 
@@ -32,7 +32,7 @@ presentable project.
 | `archive/trajectorybot-oct2021/` | Fullest earlier tree — includes `2body_ode.py`, `hohmann_test.py`, ODE tests, `reward1/2.py` variants. |
 | `archive/trajbot-dev/` | Mid-development iteration. |
 | `archive/final-report-may2021/` | The state at course submission, with the writeup. |
-| `docs/final-report.md` | The original ASTE 581 final report (author's own postmortem). |
+| `docs/final-report.md` | The original course final report (author's own postmortem). |
 | `docs/progress-report.md` | The mid-project progress report. |
 
 Trained weights, plots, `data.csv`, and other run artifacts are intentionally
@@ -77,6 +77,4 @@ Multi-body:
 
 ## Provenance
 
-Recovered from personal backups on `ws2`
-(`/mnt/media/windows-personal/.../backup/TrajectoryBot*`). Authored by
-robotrocketscience, 2021.
+Recovered from personal backups. Originally authored in 2021.

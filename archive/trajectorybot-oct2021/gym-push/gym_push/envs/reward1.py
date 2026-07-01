@@ -3,7 +3,7 @@
 """
 Created on Mon Oct  4 10:35:26 2021
 
-@author: yoshi
+@author: robotrocketscience
 """
 
 # def getReward(self,target,desired_orbit,action):

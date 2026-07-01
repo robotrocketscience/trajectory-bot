@@ -3,7 +3,7 @@
 """
 Created on Sun Oct  3 16:14:09 2021
 
-@author: yoshi
+@author: robotrocketscience
 """
 
 from scipy.integrate import odeint
