@@ -43,14 +43,15 @@ class Circularize2DConfig:
     mu: float = MU_EARTH               # [km^3/s^2]
     r_body: float = R_EARTH            # [km] central body radius (crash floor)
     dt: float = 10.0                   # [s] physics integration substep
-    decision_repeat: int = 10          # physics substeps per agent decision (the
-    #                                    agent decides every dt*decision_repeat s;
-    #                                    keeps the burn from being a needle in a
-    #                                    ~2000-step horizon while physics stay fine)
-    max_steps: int = 250               # episode cap in DECISIONS (~ a few orbits)
-    thrust_acc_max: float = 5e-2       # [km/s^2] near-impulsive thrust for this
-    #                                    milestone; low-thrust spiral is a later one
-    dv_budget: float = 3.0             # [km/s] usable Δv (fuel), forces efficiency
+    decision_repeat: int = 20          # physics substeps per agent decision, so the
+    #                                    agent decides every 200 s: the burn spans a
+    #                                    few consequential decisions instead of being
+    #                                    a needle in a ~2000-substep horizon
+    max_steps: int = 120               # episode cap in DECISIONS (~ 2 orbits)
+    thrust_acc_max: float = 1.5e-3     # [km/s^2] full-throttle decision ≈ 0.3 km/s
+    #                                    Δv (baseline burn ~1 km/s → a few decisions)
+    dv_budget: float = 2.0             # [km/s] usable Δv (fuel), forces efficiency
+    r_escape_factor: float = 5.0       # terminate (as failure) if r exceeds this×target
     alt_peri_range: tuple[float, float] = (400.0, 800.0)   # [km] periapsis altitude
     ra_over_rp_range: tuple[float, float] = (1.3, 2.5)     # apoapsis/periapsis ratio
     e_tol: float = 0.05                # success: eccentricity below this (near-circular)
@@ -92,8 +93,11 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
 
     # ---- helpers ---------------------------------------------------------
     def _potential(self, el: Elements) -> float:
-        a_err = abs(el.a - self._r_target) / self._r_target
-        return -(a_err + self.cfg.w_e * el.e)
+        # clamp so a flung/hyperbolic orbit (a<=0 or huge a) can't explode the
+        # shaping term before the escape/hyperbolic termination fires.
+        a_err = min(abs(el.a - self._r_target) / self._r_target, 5.0)
+        e = min(el.e, 2.0)
+        return -(a_err + self.cfg.w_e * e)
 
     def _obs(self, el: Elements) -> Obs:
         length = self._r_target
@@ -203,10 +207,15 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
         truncated = False
         a_err = abs(el.a - self._r_target) / self._r_target
         success = el.e < cfg.e_tol and a_err < cfg.a_tol
+        escaped = (el.a <= 0.0 or el.e >= 1.0
+                   or el.r > cfg.r_escape_factor * self._r_target)
         if success:
             reward += cfg.b_success
             terminated = True
         elif crashed:                            # hit the planet during the decision
+            reward -= cfg.b_crash
+            terminated = True
+        elif escaped:                            # flung onto an escape/hyperbolic path
             reward -= cfg.b_crash
             terminated = True
         elif self._steps >= cfg.max_steps:
