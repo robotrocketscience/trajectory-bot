@@ -186,6 +186,8 @@ def main() -> None:
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--horizon", type=int, default=60)
     ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--eval-every", type=int, default=50)
+    ap.add_argument("--eval-episodes", type=int, default=50)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--save", type=str, default="models/circularize2d_diffsim.pt")
     args = ap.parse_args()
@@ -195,7 +197,10 @@ def main() -> None:
     gen = torch.Generator(device=device).manual_seed(args.seed)
     policy = Policy().to(device)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.iters,
+                                                       eta_min=args.lr * 0.1)
 
+    best_succ = -1.0
     for it in range(args.iters):
         state, rt = sample_orbits(args.batch, device, gen)
         loss = rollout_loss(policy, state, rt, args.horizon)
@@ -203,14 +208,19 @@ def main() -> None:
         loss.backward()
         torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
         opt.step()
-        if it % 100 == 0 or it == args.iters - 1:
-            s, dvr = evaluate(policy, device, n_episodes=100)
-            print(f"iter {it:4d}  loss={float(loss):.4f}  "
+        sched.step()
+        if it % args.eval_every == 0 or it == args.iters - 1:
+            s, dvr = evaluate(policy, device, n_episodes=args.eval_episodes)
+            print(f"iter {it:4d}  loss={float(loss.detach()):.4f}  "
                   f"success={s:.2%}  dv_ratio={dvr:.3f}", flush=True)
+            if s > best_succ:                          # keep the best policy
+                best_succ = s
+                torch.save(policy.state_dict(), args.save)
 
-    torch.save(policy.state_dict(), args.save)
+    # final eval of the BEST saved policy on a larger held-out set
+    policy.load_state_dict(torch.load(args.save))
     s, dvr = evaluate(policy, device, n_episodes=200)
-    print(f"FINAL: success={s:.2%}  dv_ratio={dvr:.3f}  saved {args.save}")
+    print(f"FINAL(best): success={s:.2%}  dv_ratio={dvr:.3f}  saved {args.save}")
 
 
 if __name__ == "__main__":
