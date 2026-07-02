@@ -42,8 +42,12 @@ Vec = npt.NDArray[np.float64]
 class Circularize2DConfig:
     mu: float = MU_EARTH               # [km^3/s^2]
     r_body: float = R_EARTH            # [km] central body radius (crash floor)
-    dt: float = 10.0                   # [s] integration/decision step
-    max_steps: int = 2000              # episode step cap (~ a few orbits)
+    dt: float = 10.0                   # [s] physics integration substep
+    decision_repeat: int = 10          # physics substeps per agent decision (the
+    #                                    agent decides every dt*decision_repeat s;
+    #                                    keeps the burn from being a needle in a
+    #                                    ~2000-step horizon while physics stay fine)
+    max_steps: int = 250               # episode cap in DECISIONS (~ a few orbits)
     thrust_acc_max: float = 5e-2       # [km/s^2] near-impulsive thrust for this
     #                                    milestone; low-thrust spiral is a later one
     dv_budget: float = 3.0             # [km/s] usable Δv (fuel), forces efficiency
@@ -154,40 +158,46 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
         norm = float(np.hypot(float(act[0]), float(act[1])))
         if norm > 1.0:
             act = act / norm
-        # Interpret the action in the VELOCITY frame: act[0] = tangential (prograde)
-        # throttle, act[1] = radial (outward) throttle. This aligns the action with
-        # the physics — "burn prograde at apoapsis" is just act ≈ (+1, 0) — instead
-        # of forcing the policy to emit a specific rotating inertial vector.
-        x, y, vx, vy = (float(self._state[i]) for i in range(4))
-        r_mag = float(np.hypot(x, y))
-        v_mag = float(np.hypot(vx, vy))
-        t_hat = (vx / v_mag, vy / v_mag)        # prograde
-        r_hat = (x / r_mag, y / r_mag)          # radial outward
-        thrust_acc: Vec = np.array([
-            (act[0] * t_hat[0] + act[1] * r_hat[0]) * cfg.thrust_acc_max,
-            (act[0] * t_hat[1] + act[1] * r_hat[1]) * cfg.thrust_acc_max,
-        ], dtype=np.float64)
-        dv_step = float(np.hypot(float(thrust_acc[0]), float(thrust_acc[1]))) * cfg.dt
+        # The action is held over `decision_repeat` physics substeps. It is
+        # interpreted in the VELOCITY frame: act[0] = tangential (prograde), act[1]
+        # = radial (outward) throttle — so "burn prograde" is just act ≈ (+1, 0).
+        # The thrust direction is recomputed each substep so it tracks prograde as
+        # the craft moves.
+        dv_decision = 0.0
+        crashed = False
+        for _ in range(cfg.decision_repeat):
+            x, y, vx, vy = (float(self._state[i]) for i in range(4))
+            r_mag = float(np.hypot(x, y))
+            v_mag = float(np.hypot(vx, vy))
+            t_hat = (vx / v_mag, vy / v_mag)        # prograde
+            r_hat = (x / r_mag, y / r_mag)          # radial outward
+            thrust_acc: Vec = np.array([
+                (act[0] * t_hat[0] + act[1] * r_hat[0]) * cfg.thrust_acc_max,
+                (act[0] * t_hat[1] + act[1] * r_hat[1]) * cfg.thrust_acc_max,
+            ], dtype=np.float64)
+            dv_sub = float(np.hypot(float(thrust_acc[0]), float(thrust_acc[1]))) * cfg.dt
+            if self._fuel <= 0.0:                    # fuel gate
+                thrust_acc = np.zeros(2, dtype=np.float64)
+                dv_sub = 0.0
+            elif dv_sub > self._fuel:
+                thrust_acc = thrust_acc * (self._fuel / dv_sub)
+                dv_sub = self._fuel
+            self._fuel -= dv_sub
+            self._dv_used += dv_sub
+            dv_decision += dv_sub
+            self._state = rk4_step(self._state, cfg.dt, thrust_acc, cfg.mu)
+            if float(np.hypot(float(self._state[0]), float(self._state[1]))) <= cfg.r_body:
+                crashed = True
+                break
 
-        # fuel gate: no thrust once the Δv budget is exhausted.
-        if self._fuel <= 0.0:
-            thrust_acc = np.zeros(2, dtype=np.float64)
-            dv_step = 0.0
-        elif dv_step > self._fuel:
-            thrust_acc = thrust_acc * (self._fuel / dv_step)
-            dv_step = self._fuel
-        self._fuel -= dv_step
-        self._dv_used += dv_step
-
-        self._state = rk4_step(self._state, cfg.dt, thrust_acc, cfg.mu)
         self._steps += 1
         el = orbital_elements(self._state, cfg.mu)
 
-        # --- reward: true objective + potential-based shaping ---
+        # --- reward: true objective + potential-based shaping (per decision) ---
         potential = self._potential(el)
         shaping = cfg.w_shape * (cfg.gamma * potential - self._prev_potential)
         self._prev_potential = potential
-        reward = shaping - cfg.k_fuel * dv_step - cfg.w_time
+        reward = shaping - cfg.k_fuel * dv_decision - cfg.w_time
 
         terminated = False
         truncated = False
@@ -196,7 +206,7 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
         if success:
             reward += cfg.b_success
             terminated = True
-        elif el.r <= cfg.r_body:                 # crashed into the planet
+        elif crashed:                            # hit the planet during the decision
             reward -= cfg.b_crash
             terminated = True
         elif self._steps >= cfg.max_steps:
@@ -208,7 +218,7 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
         info: dict[str, Any] = {
             "elements": el,
             "dv_used": self._dv_used,
-            "dv_step": dv_step,
+            "dv_step": dv_decision,
             "fuel": self._fuel,
             "r_target": self._r_target,
             "success": success,

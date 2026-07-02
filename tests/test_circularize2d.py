@@ -56,13 +56,13 @@ def test_scripted_apoapsis_burn_is_solvable():
     apsis; the default (harder) thrust is what the RL agent must master.
     """
     for seed in (7, 0, 1, 2, 3):
-        env = Circularize2DEnv(Circularize2DConfig(max_steps=6000, thrust_acc_max=0.1))
+        env = Circularize2DEnv(Circularize2DConfig(max_steps=600, thrust_acc_max=0.1))
         env.reset(seed=seed)
         r_target = env._r_target
         vc_target = orb.speed_circular(r_target, env.cfg.mu)
         baseline = orb.circularize_apoapsis_dv(
             orb.orbital_elements(env._state, env.cfg.mu).r_p, r_target, env.cfg.mu)
-        dv_per_step = env.cfg.thrust_acc_max * env.cfg.dt
+        dv_per_step = env.cfg.thrust_acc_max * env.cfg.dt * env.cfg.decision_repeat
 
         prev_rdot = None
         burning = False
@@ -85,4 +85,4 @@ def test_scripted_apoapsis_burn_is_solvable():
             _, _, terminated, truncated, info = env.step(action)
 
         assert info["success"] is True, f"seed {seed} did not circularize"
-        assert info["dv_used"] < 1.2 * baseline
+        assert info["dv_used"] < 1.4 * baseline   # coarse decisions smear slightly
