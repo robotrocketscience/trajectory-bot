@@ -72,7 +72,20 @@ correct baseline; using Hohmann everywhere would handicap the agent.
 10. **Earth–Mars transfer + capture** (heliocentric). Baseline: heliocentric Hohmann /
     porkchop optimum; explore gravity assists.
 11. **Gravity assist / flyby** as a maneuver primitive.
-12. **Low-energy / manifold transfers** (CR3BP) — the discovery frontier.
+12. **Low-energy / manifold transfers** — the discovery frontier.
+
+**Dynamics decision (locked):** Tier-3 reuses the **JPL Horizons ephemeris +
+N-body** stack from the original 2021 project — real Sun/planet/Moon states, not
+an idealized CR3BP. We already rebuilt the data layer as the bulk/cached/idempotent
+`ephemeris.py` (one Horizons query per body-span, disk-cached). Implication for
+diff-sim: body positions are an **exogenous time series** (their motion doesn't
+depend on the spacecraft), so in the differentiable rollout they are treated as
+time-indexed constants — gradients flow through the spacecraft's own dynamics and
+controls only, which is exactly what we want and keeps the graph clean. The N-body
+gravity on the spacecraft (Sun + planets + Moon, from `BODY_DICT`) is summed each
+step as in the original. If a cleaner idealized testbed is ever wanted for
+manifold analysis, CR3BP can be added later as an *optional* alternate model, but
+the primary Tier-3 dynamics are ephemeris-driven N-body.
 
 ## Mission composition — stringing maneuvers together
 
