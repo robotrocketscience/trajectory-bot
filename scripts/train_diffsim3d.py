@@ -30,8 +30,8 @@ R_BODY = orb.R_EARTH
 DT = 10.0
 REPEAT = 20
 A_THRUST = 5e-3
-MAX_TORQUE = 2e-3
-INERTIA = (1.0, 1.0, 1.5)
+MAX_RATE = 0.05
+RATE_GAIN = 0.1
 DV_BUDGET = 2.0
 ALT_PERI = (400.0, 800.0)
 RA_RP = (1.3, 2.5)
@@ -65,30 +65,24 @@ def qnorm(q: torch.Tensor) -> torch.Tensor:
     return q / torch.linalg.norm(q, dim=1, keepdim=True).clamp_min(1e-9)
 
 
-def deriv(state, torque, throttle):
+def deriv(state, omega_cmd, throttle):
     r = state[:, 0:3]; v = state[:, 3:6]; q = state[:, 6:10]; w = state[:, 10:13]
     rmag = torch.linalg.norm(r, dim=1, keepdim=True).clamp_min(1.0)
     grav = -MU * r / rmag**3
     b_hat = torch.zeros_like(v); b_hat[:, 0] = 1.0
     tdir = qrotate(q, b_hat)
     acc = grav + throttle.unsqueeze(1) * A_THRUST * tdir
-    # qdot = 0.5 q ⊗ [0,w]
     z = torch.zeros(w.shape[0], 1, device=w.device)
-    qdot = 0.5 * qmul(q, torch.cat([z, w], dim=1))
-    ix, iy, iz = INERTIA
-    iw = torch.stack([ix * w[:, 0], iy * w[:, 1], iz * w[:, 2]], dim=1)
-    gyro = torch.cross(w, iw, dim=1)
-    wdot = torch.stack([(torque[:, 0] - gyro[:, 0]) / ix,
-                        (torque[:, 1] - gyro[:, 1]) / iy,
-                        (torque[:, 2] - gyro[:, 2]) / iz], dim=1)
+    qdot = 0.5 * qmul(q, torch.cat([z, w], dim=1))      # q̇ = ½ q ⊗ [0,ω]
+    wdot = RATE_GAIN * (omega_cmd - w)                  # first-order rate tracking
     return torch.cat([v, acc, qdot, wdot], dim=1)
 
 
-def rk4(state, torque, throttle):
-    k1 = deriv(state, torque, throttle)
-    k2 = deriv(state + 0.5 * DT * k1, torque, throttle)
-    k3 = deriv(state + 0.5 * DT * k2, torque, throttle)
-    k4 = deriv(state + DT * k3, torque, throttle)
+def rk4(state, omega_cmd, throttle):
+    k1 = deriv(state, omega_cmd, throttle)
+    k2 = deriv(state + 0.5 * DT * k1, omega_cmd, throttle)
+    k3 = deriv(state + 0.5 * DT * k2, omega_cmd, throttle)
+    k4 = deriv(state + DT * k3, omega_cmd, throttle)
     s = state + (DT / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
     q = qnorm(s[:, 6:10])
     return torch.cat([s[:, 0:6], q, s[:, 10:13]], dim=1)
@@ -178,7 +172,7 @@ def rollout_loss(policy, state, rt, horizon,
     for _ in range(horizon):
         obs = observe(state, rt, fuel.clamp_min(0.0))
         act = policy(obs)
-        torque = act[:, 0:3] * MAX_TORQUE
+        omega_cmd = act[:, 0:3] * MAX_RATE
         throttle = act[:, 3].clamp(0.0, 1.0)
         for _ in range(REPEAT):
             gate = (fuel > 0).float()
@@ -186,7 +180,7 @@ def rollout_loss(policy, state, rt, horizon,
             dv_sub = thr * A_THRUST * DT
             fuel = fuel - dv_sub
             dv_total = dv_total + dv_sub
-            state = rk4(state, torque, thr)
+            state = rk4(state, omega_cmd, thr)
             rnow = torch.linalg.norm(state[:, 0:3], dim=1)
             crash = crash + torch.relu(R_BODY - rnow) ** 2
         # pointing: encourage body axis aligned with prograde

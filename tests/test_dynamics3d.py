@@ -45,14 +45,15 @@ def test_quaternion_stays_unit():
         assert abs(float(np.linalg.norm(s[6:10])) - 1.0) < 1e-6
 
 
-def test_torque_free_spin_about_principal_axis_is_constant():
-    # spin purely about the z principal axis -> torque-free rate stays constant
+def test_rate_tracking_reaches_commanded_rate():
+    # angular velocity should track the commanded body rate (first-order response)
     s = _state(np.array([7000.0, 0.0, 0.0]), np.array([0.0, 7.5, 0.0]),
-               w=np.array([0.0, 0.0, 0.1]))
+               w=np.zeros(3))
     sc = dyn.Spacecraft()
-    for _ in range(200):
-        s = dyn.rk4_step(s, 1.0, NO_TORQUE, 0.0, sc)
-    np.testing.assert_allclose(s[10:13], [0.0, 0.0, 0.1], atol=1e-6)
+    cmd = np.array([0.0, 0.0, 0.04])
+    for _ in range(300):
+        s = dyn.rk4_step(s, 1.0, cmd, 0.0, sc)     # 300 s >> 1/rate_gain = 10 s
+    np.testing.assert_allclose(s[10:13], cmd, atol=2e-3)
 
 
 def test_thrust_along_body_axis_accelerates_prograde():

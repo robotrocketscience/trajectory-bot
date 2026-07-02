@@ -44,6 +44,7 @@ class Circularize3DConfig:
     alt_peri_range: tuple[float, float] = (400.0, 800.0)
     ra_over_rp_range: tuple[float, float] = (1.3, 2.5)
     inc_max: float = np.radians(40.0)          # random orbit-plane tilt range
+    max_rate: float = 0.05                      # [rad/s] commanded body-rate cap
     e_tol: float = 0.05
     a_tol: float = 0.05
     w_shape: float = 20.0
@@ -149,7 +150,7 @@ class Circularize3DEnv(gym.Env[Obs, Act]):
     def step(self, action: Act) -> tuple[Obs, float, bool, bool, dict[str, Any]]:
         cfg = self.cfg
         act: Vec = np.asarray(action, dtype=np.float64)
-        torque: Vec = np.clip(act[0:3], -1.0, 1.0) * cfg.sc.max_torque
+        omega_cmd: Vec = np.clip(act[0:3], -1.0, 1.0) * cfg.max_rate
         throttle = float(np.clip(act[3], 0.0, 1.0))
 
         dv_decision = 0.0
@@ -166,7 +167,7 @@ class Circularize3DEnv(gym.Env[Obs, Act]):
             self._fuel -= dv_sub
             self._dv_used += dv_sub
             dv_decision += dv_sub
-            self._state = rk4_step(self._state, cfg.dt, torque, thr, cfg.sc)
+            self._state = rk4_step(self._state, cfg.dt, omega_cmd, thr, cfg.sc)
             rnow = float(np.linalg.norm(self._state[0:3]))
             if rnow <= cfg.r_body:
                 crashed = True
