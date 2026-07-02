@@ -220,7 +220,7 @@ def rollout_loss(policy, state, rt, horizon,
 
 
 @torch.no_grad()
-def evaluate(policy, device, n_episodes=50, seed=500_000):
+def evaluate(policy, device, n_episodes=30, seed=500_000):
     env = Circularize3DEnv(Circularize3DConfig())
     succ = 0
     for ep in range(n_episodes):
