@@ -31,7 +31,6 @@ from ..orbital import (
     circularize_apoapsis_dv,
     orbital_elements,
     speed_circular,
-    vis_viva,
 )
 
 Obs = npt.NDArray[np.float32]
@@ -54,12 +53,12 @@ class Circularize2DConfig:
     a_tol: float = 0.05                # success: |a - r_target| / r_target below this
     w_shape: float = 20.0              # potential-shaping scale
     w_e: float = 1.0                   # eccentricity weight in the potential
-    k_fuel: float = 1.0                # penalty per km/s of Δv spent (kept small so
-    #                                    attempting the maneuver is not net-negative
-    #                                    before the agent can hit the tolerance)
-    b_success: float = 100.0
+    k_fuel: float = 1.0                # penalty per km/s of Δv spent
+    w_time: float = 0.05               # per-step living cost so dawdling/hovering
+    #                                    near the target is worse than committing
+    b_success: float = 200.0           # large: terminating in-tol >> hovering near it
     b_crash: float = 100.0
-    b_proximity: float = 50.0          # graded end-of-episode bonus for getting close
+    b_proximity: float = 20.0          # small graded bonus (bootstrap, not a crutch)
     gamma: float = 0.999               # shaping discount (match training γ)
 
 
@@ -188,7 +187,7 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
         potential = self._potential(el)
         shaping = cfg.w_shape * (cfg.gamma * potential - self._prev_potential)
         self._prev_potential = potential
-        reward = shaping - cfg.k_fuel * dv_step
+        reward = shaping - cfg.k_fuel * dv_step - cfg.w_time
 
         terminated = False
         truncated = False
