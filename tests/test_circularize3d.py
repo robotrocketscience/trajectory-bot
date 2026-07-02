@@ -43,14 +43,15 @@ def test_commanded_prograde_burn_raises_orbit():
 
 
 def test_controller_slews_thrust_axis_toward_command():
+    from tbot import quaternion as quat
     env = Circularize3DEnv()
     env.reset(seed=2)
     tax = np.array(env.cfg.sc.thrust_axis)
-    r, v = env._state[0:3], env._state[3:6]
-    d = attitude.desired_direction(r, v, np.array([1.0, 0.0, 0.0]))  # prograde
-    from tbot import quaternion as quat
-    align0 = float(np.dot(quat.rotate(env._state[6:10], tax), d))
-    for _ in range(10):
+    for _ in range(15):
         env.step(np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32))  # point prograde, no burn
-    align1 = float(np.dot(quat.rotate(env._state[6:10], tax), d))
-    assert align1 > align0                        # thrust axis better aligned with prograde
+    # measure against the CURRENT prograde (it drifts as the craft coasts; the
+    # controller tracks the moving direction, so compare to where it is now)
+    r, v = env._state[0:3], env._state[3:6]
+    d_now = attitude.desired_direction(r, v, np.array([1.0, 0.0, 0.0]))
+    align = float(np.dot(quat.rotate(env._state[6:10], tax), d_now))
+    assert align > 0.9                            # thrust axis well aligned with prograde
