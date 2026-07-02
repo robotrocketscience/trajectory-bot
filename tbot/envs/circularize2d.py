@@ -52,11 +52,14 @@ class Circularize2DConfig:
     ra_over_rp_range: tuple[float, float] = (1.3, 2.5)     # apoapsis/periapsis ratio
     e_tol: float = 0.02                # success: eccentricity below this
     a_tol: float = 0.02                # success: |a - r_target| / r_target below this
-    w_shape: float = 10.0              # potential-shaping scale
+    w_shape: float = 20.0              # potential-shaping scale
     w_e: float = 1.0                   # eccentricity weight in the potential
-    k_fuel: float = 10.0               # penalty per km/s of Δv spent
+    k_fuel: float = 1.0                # penalty per km/s of Δv spent (kept small so
+    #                                    attempting the maneuver is not net-negative
+    #                                    before the agent can hit the tolerance)
     b_success: float = 100.0
     b_crash: float = 100.0
+    b_proximity: float = 50.0          # graded end-of-episode bonus for getting close
     gamma: float = 0.999               # shaping discount (match training γ)
 
 
@@ -165,8 +168,8 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
 
         terminated = False
         truncated = False
-        success = (el.e < cfg.e_tol
-                   and abs(el.a - self._r_target) / self._r_target < cfg.a_tol)
+        a_err = abs(el.a - self._r_target) / self._r_target
+        success = el.e < cfg.e_tol and a_err < cfg.a_tol
         if success:
             reward += cfg.b_success
             terminated = True
@@ -175,6 +178,10 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
             terminated = True
         elif self._steps >= cfg.max_steps:
             truncated = True
+            # graded terminal bonus so near-misses get credit and the policy has a
+            # gradient to climb toward the (sparse) hard-success region.
+            reward += cfg.b_proximity * float(
+                np.exp(-(a_err / cfg.a_tol + el.e / cfg.e_tol)))
 
         info: dict[str, Any] = {
             "elements": el,
