@@ -1,0 +1,45 @@
+[project]
+name = "trajectory-bot"
+version = "0.1.0"
+description = "From-scratch orbital-dynamics sim + RL agent for spacecraft maneuver optimization, benchmarked against analytic transfers."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "gymnasium>=0.29",
+    "stable-baselines3>=2.3",
+    "torch>=2.2",
+    "astropy>=6.0",
+    "astroquery>=0.4.7",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pyright>=1.1.380",
+    "tensorboard>=2.16",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tbot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.pyright]
+# Strict typing is enforced on the shipped library only. The 2021 code under
+# v2/ and archive/ is historical and intentionally excluded; the test suite is
+# checked in basic mode.
+include = ["tbot", "ephemeris.py", "horizons_backend.py"]
+exclude = ["v2", "archive", "tests", "scripts", "**/__pycache__", ".ephem_cache"]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+reportMissingTypeStubs = false          # astroquery/sb3 ship without stubs
+
