@@ -38,6 +38,7 @@ every seed at Δv ≈ the analytic baseline.
 | Cold PPO (model-free, 8 runs) | 0–3% | — (2% successes ≈ 1.1) | never learns the precise burn |
 | Behavior cloning (BC) | ~16% | ~1.37 | capped by covariate shift |
 | DAgger (BC + on-policy relabel) | ~45% (peak 48.5%) | ~1.5 | plateaus below the expert |
+| **Differentiable-sim policy gradient** | **81%** | **1.26** | exact gradients through the rollout — beats every learned method |
 
 Success is over 100–200 held-out random orbits; Δv ratio is agent Δv / analytic
 baseline (1.0 = optimal). Trained on a single RTX 3060 (Torch + CUDA).
@@ -83,19 +84,36 @@ smooths the sharp decision boundary; the residual ~6% action error plus ±1-deci
 timing slop misses the tight 5% tolerance on ~55% of orbits. Δv also runs ~1.5×
 optimal (sloppy corrective burns).
 
-## Conclusion → next milestone
+### Differentiable-simulation policy gradient — 81% (the winner)
+`scripts/train_diffsim.py`. The two-body RK4 dynamics, orbital elements, and
+observation are reimplemented in PyTorch (batched, mirroring `tbot` exactly so the
+policy transfers to the Gymnasium env for eval). The policy is rolled out through
+these differentiable dynamics and the episode loss (final orbit error + Δv +
+impact penalty) is **backpropagated through the entire rollout** — an analytic
+policy gradient. No exploration noise, no demonstrations: it optimizes the true
+objective directly via the known physics.
 
-Model-free RL and imitation all wall out here because they **discard the fact
-that the dynamics are known and exactly differentiable**. The scripted controller
-solves the task trivially *with* the physics; the learned methods can't match a
-precise, history-dependent maneuver from reward or imitation alone.
+It reached **91% at peak in ~100 gradient steps** (a smoke test, ~2 min) and, with
+cosine-decayed LR + best-model checkpointing, settled at a stable **81% success /
+1.26× optimal Δv** over 200 held-out orbits. That is a decisive win over every
+model-free/imitation method — and it was reached in a fraction of their training.
+The huge iteration-0 loss (~2×10⁹, from random policies flinging orbits) is
+handled by gradient clipping without NaNs.
 
-The next experiment is a **differentiable-simulation policy gradient**:
-reimplement the RK4 dynamics in Torch and backpropagate exact gradients through
-the rollout to optimize the policy directly. Unlike model-free RL it exploits the
-known physics, and unlike imitation it optimizes the true objective (Δv +
-orbit error) — so it is the candidate most likely to *beat* the analytic
-baseline rather than merely match it. Results will be appended here.
+## Conclusion
+
+Model-free RL and imitation wall out here because they **discard the fact that the
+dynamics are known and exactly differentiable**. The differentiable-simulation
+policy gradient exploits exactly that, and unlike imitation it optimizes the *true*
+objective — so it is the method positioned to eventually *beat* analytic baselines,
+not merely match them (see `docs/ROADMAP.md` for where that matters:
+combined maneuvers, low-thrust, and multi-body, where Hohmann is not optimal).
+
+**Milestone 1 verdict:** the physics-informed differentiable-sim approach is the
+approach going forward. Next milestones (`docs/ROADMAP.md`): 3-D env with full
+quaternion attitude control → re-validate circularize in 3-D → plane change →
+the KSC combined-maneuver mission → low-thrust (Edelbaum) → multi-body
+(Earth–Moon/Mars, JPL-ephemeris N-body).
 
 ## Appendix — bugs found and fixed on this milestone
 

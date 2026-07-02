@@ -48,13 +48,15 @@ to learn the maneuver. Full methodology + analysis in
 |---|---|---|
 | Scripted expert | 100% | 1.00 |
 | Cold PPO (model-free, 8 runs) | 0–3% | — |
-| Behavior cloning | ~16% | — |
+| Behavior cloning | ~16% | ~1.37 |
 | DAgger | ~45% | ~1.5 |
+| **Differentiable-sim policy gradient** | **81%** | **1.26** |
 
 Takeaway: model-free RL and imitation wall out because they discard the known,
-**exactly differentiable** dynamics. Next: a **differentiable-simulation policy
-gradient** (backprop through the RK4 rollout) — the candidate to actually *beat*
-the analytic baseline.
+**exactly differentiable** dynamics. The **differentiable-simulation policy
+gradient** (backprop through the RK4 rollout) exploits them and wins decisively —
+and because it optimizes true Δv, it's the method positioned to *beat* analytic
+baselines where they aren't optimal (see [`docs/ROADMAP.md`](docs/ROADMAP.md)).
 
 ### Roadmap
 
