@@ -48,8 +48,9 @@ class Circularize2DConfig:
     #                                    few consequential decisions instead of being
     #                                    a needle in a ~2000-substep horizon
     max_steps: int = 120               # episode cap in DECISIONS (~ 2 orbits)
-    thrust_acc_max: float = 1.5e-3     # [km/s^2] full-throttle decision ≈ 0.3 km/s
-    #                                    Δv (baseline burn ~1 km/s → a few decisions)
+    thrust_acc_max: float = 5e-3       # [km/s^2] full-throttle decision ≈ 1 km/s Δv
+    #                                    (≈ a baseline burn; scripted controller
+    #                                    circularizes 8/8 at ratio 1.00 here)
     dv_budget: float = 2.0             # [km/s] usable Δv (fuel), forces efficiency
     r_escape_factor: float = 5.0       # terminate (as failure) if r exceeds this×target
     alt_peri_range: tuple[float, float] = (400.0, 800.0)   # [km] periapsis altitude
