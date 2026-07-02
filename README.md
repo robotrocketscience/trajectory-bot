@@ -9,7 +9,63 @@ Originally built in 2021 as a project for a graduate astrodynamics course
 trajectory. This repo revives the code to audit *why* and fix it into a
 presentable project.
 
-## The stack (all hand-rolled — no Basilisk / poliastro)
+## The rewrite (2026) — `tbot/`
+
+The revival is a clean, modern package rather than a patch of the 2021 code. It
+keeps the original spirit (everything hand-rolled — no Basilisk / poliastro) on
+an up-to-date stack: **Python 3.12, Gymnasium, Stable-Baselines3, PyTorch, `uv`**,
+with **pyright `strict`** enforced on the shipped library.
+
+```
+tbot/
+  orbital.py            # planar orbital elements + analytic Δv baselines
+  dynamics.py           # two-body RK4 propagation
+  envs/circularize2d.py # Gymnasium env: Milestone 1 (2-D circularization)
+ephemeris.py            # bulk, cached, idempotent JPL Horizons access
+scripts/                # experiment/training entrypoints (PPO, BC, DAgger, …)
+tests/                  # pyright-strict library is covered here
+```
+
+Run it:
+
+```bash
+uv sync --extra dev          # Python 3.12 env, from pyproject/uv.lock
+uv run pytest                # physics, baselines, env, solvability
+uv run pyright               # strict type check (library)
+uv run python scripts/train_circularize2d.py     # model-free PPO
+uv run python scripts/dagger.py                  # imitation (DAgger)
+```
+
+### Milestone 1 — 2-D circularization (current)
+
+Circularize from an elliptical orbit at minimum Δv, benchmarked against the
+analytic single-impulse optimum. The env is correct and provably solvable (a
+scripted controller hits 100% at Δv ≈ optimal), and it's the testbed for *how*
+to learn the maneuver. Full methodology + analysis in
+[`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md). Result so far:
+
+| Method | Success | Δv vs optimal |
+|---|---|---|
+| Scripted expert | 100% | 1.00 |
+| Cold PPO (model-free, 8 runs) | 0–3% | — |
+| Behavior cloning | ~16% | — |
+| DAgger | ~45% | ~1.5 |
+
+Takeaway: model-free RL and imitation wall out because they discard the known,
+**exactly differentiable** dynamics. Next: a **differentiable-simulation policy
+gradient** (backprop through the RK4 rollout) — the candidate to actually *beat*
+the analytic baseline.
+
+### Roadmap
+
+2-D circularize → full **3-D attitude control** (quaternion orientation; needed
+for plane/inclination changes) → GEO transfer → multi-body (Earth–Moon,
+Earth–Mars, capture). See [`docs/AUDIT.md`](docs/AUDIT.md) for the audit of the
+2021 code and [`docs/BASELINE.md`](docs/BASELINE.md) for the original-code repro.
+
+---
+
+## The 2021 original stack (all hand-rolled — no Basilisk / poliastro)
 
 - **Ephemerides:** real planet/moon states pulled from **JPL Horizons** via
   `astroquery.jplhorizons` (`TBot_Setup.py`).
