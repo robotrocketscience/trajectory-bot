@@ -79,7 +79,7 @@ def test_scripted_apoapsis_burn_is_solvable():
             prev_rdot = rdot
             if burning and el.e >= env.cfg.e_tol and v < vc_target:
                 mag = min(1.0, (vc_target - v) / dv_per_step)   # avoid overshoot
-                action = ((np.array([s[2], s[3]]) / v) * mag).astype(np.float32)
+                action = np.array([mag, 0.0], dtype=np.float32)  # pure prograde
             else:
                 action = np.zeros(2, dtype=np.float32)
             _, _, terminated, truncated, info = env.step(action)

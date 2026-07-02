@@ -72,7 +72,7 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
         super().__init__()
         self.cfg: Circularize2DConfig = config or Circularize2DConfig()
 
-        # action: 2-D thrust direction * magnitude, each component in [-1, 1].
+        # action: velocity-frame throttle [tangential, radial], each in [-1, 1].
         self.action_space: spaces.Space[Act] = spaces.Box(
             low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
         # observation: 8-D normalized state (finite bounds; values are clipped).
@@ -143,7 +143,19 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
         norm = float(np.hypot(float(act[0]), float(act[1])))
         if norm > 1.0:
             act = act / norm
-        thrust_acc: Vec = act * cfg.thrust_acc_max
+        # Interpret the action in the VELOCITY frame: act[0] = tangential (prograde)
+        # throttle, act[1] = radial (outward) throttle. This aligns the action with
+        # the physics — "burn prograde at apoapsis" is just act ≈ (+1, 0) — instead
+        # of forcing the policy to emit a specific rotating inertial vector.
+        x, y, vx, vy = (float(self._state[i]) for i in range(4))
+        r_mag = float(np.hypot(x, y))
+        v_mag = float(np.hypot(vx, vy))
+        t_hat = (vx / v_mag, vy / v_mag)        # prograde
+        r_hat = (x / r_mag, y / r_mag)          # radial outward
+        thrust_acc: Vec = np.array([
+            (act[0] * t_hat[0] + act[1] * r_hat[0]) * cfg.thrust_acc_max,
+            (act[0] * t_hat[1] + act[1] * r_hat[1]) * cfg.thrust_acc_max,
+        ], dtype=np.float64)
         dv_step = float(np.hypot(float(thrust_acc[0]), float(thrust_acc[1]))) * cfg.dt
 
         # fuel gate: no thrust once the Δv budget is exhausted.
@@ -178,10 +190,9 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
             terminated = True
         elif self._steps >= cfg.max_steps:
             truncated = True
-            # graded terminal bonus so near-misses get credit and the policy has a
-            # gradient to climb toward the (sparse) hard-success region.
-            reward += cfg.b_proximity * float(
-                np.exp(-(a_err / cfg.a_tol + el.e / cfg.e_tol)))
+            # graded terminal bonus, gentle in the RAW element errors (not scaled by
+            # the tight tolerance) so there is a usable gradient from far away.
+            reward += cfg.b_proximity * float(np.exp(-(a_err + cfg.w_e * el.e)))
 
         info: dict[str, Any] = {
             "elements": el,
