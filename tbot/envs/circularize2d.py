@@ -50,8 +50,8 @@ class Circularize2DConfig:
     dv_budget: float = 3.0             # [km/s] usable Δv (fuel), forces efficiency
     alt_peri_range: tuple[float, float] = (400.0, 800.0)   # [km] periapsis altitude
     ra_over_rp_range: tuple[float, float] = (1.3, 2.5)     # apoapsis/periapsis ratio
-    e_tol: float = 0.02                # success: eccentricity below this
-    a_tol: float = 0.02                # success: |a - r_target| / r_target below this
+    e_tol: float = 0.05                # success: eccentricity below this (near-circular)
+    a_tol: float = 0.05                # success: |a - r_target| / r_target below this
     w_shape: float = 20.0              # potential-shaping scale
     w_e: float = 1.0                   # eccentricity weight in the potential
     k_fuel: float = 1.0                # penalty per km/s of Δv spent (kept small so
@@ -112,16 +112,28 @@ class Circularize2DEnv(gym.Env[Obs, Act]):
               options: dict[str, Any] | None = None) -> tuple[Obs, dict[str, Any]]:
         super().reset(seed=seed)
         rng = self.np_random
+        mu = self.cfg.mu
         r_p = self.cfg.r_body + float(rng.uniform(*self.cfg.alt_peri_range))
         r_a = r_p * float(rng.uniform(*self.cfg.ra_over_rp_range))
         a = 0.5 * (r_p + r_a)
-        v_p = vis_viva(r_p, a, self.cfg.mu)       # periapsis speed (prograde)
+        e = (r_a - r_p) / (r_a + r_p)
+        p = a * (1.0 - e * e)                      # semi-latus rectum
+        h = float(np.sqrt(mu * p))                 # specific angular momentum
 
-        theta = float(rng.uniform(0.0, 2.0 * np.pi))   # random argument of periapsis
-        ct, st = float(np.cos(theta)), float(np.sin(theta))
-        # position at periapsis along r_hat; velocity prograde along t_hat (CCW)
-        self._state = np.array(
-            [r_p * ct, r_p * st, v_p * (-st), v_p * ct], dtype=np.float64)
+        # Start at a RANDOM true anomaly on the ellipse (not always periapsis), so
+        # the apoapsis burn opportunity comes soon and varies across episodes —
+        # far more learnable than always facing a full half-orbit coast first.
+        nu = float(rng.uniform(0.0, 2.0 * np.pi))
+        r = p / (1.0 + e * float(np.cos(nu)))
+        # perifocal position/velocity, then rotate by a random argument of periapsis
+        pf_r = (r * float(np.cos(nu)), r * float(np.sin(nu)))
+        pf_v = ((mu / h) * (-float(np.sin(nu))), (mu / h) * (e + float(np.cos(nu))))
+        w = float(rng.uniform(0.0, 2.0 * np.pi))
+        cw, sw = float(np.cos(w)), float(np.sin(w))
+        self._state = np.array([
+            cw * pf_r[0] - sw * pf_r[1], sw * pf_r[0] + cw * pf_r[1],
+            cw * pf_v[0] - sw * pf_v[1], sw * pf_v[0] + cw * pf_v[1],
+        ], dtype=np.float64)
 
         self._r_target = r_a
         self._fuel = self.cfg.dv_budget
