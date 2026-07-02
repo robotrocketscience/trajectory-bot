@@ -45,7 +45,8 @@ class Circularize2DConfig:
     r_body: float = R_EARTH            # [km] central body radius (crash floor)
     dt: float = 10.0                   # [s] integration/decision step
     max_steps: int = 2000              # episode step cap (~ a few orbits)
-    thrust_acc_max: float = 2e-2       # [km/s^2] max thrust acceleration (~2g)
+    thrust_acc_max: float = 5e-2       # [km/s^2] near-impulsive thrust for this
+    #                                    milestone; low-thrust spiral is a later one
     dv_budget: float = 3.0             # [km/s] usable Δv (fuel), forces efficiency
     alt_peri_range: tuple[float, float] = (400.0, 800.0)   # [km] periapsis altitude
     ra_over_rp_range: tuple[float, float] = (1.3, 2.5)     # apoapsis/periapsis ratio
