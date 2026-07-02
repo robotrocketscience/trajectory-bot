@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false
 # pyright: reportUnknownVariableType=false, reportAttributeAccessIssue=false
+# pyright: reportArgumentType=false
 """Untyped-library boundary: the single JPL Horizons network call.
 
 astropy / astroquery ship only partial type information, so pyright cannot see
