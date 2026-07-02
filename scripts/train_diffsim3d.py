@@ -32,6 +32,7 @@ REPEAT = 20
 A_THRUST = 5e-3
 MAX_RATE = 0.05
 RATE_GAIN = 0.1
+K_P = 0.5
 DV_BUDGET = 2.0
 ALT_PERI = (400.0, 800.0)
 RA_RP = (1.3, 2.5)
@@ -101,16 +102,29 @@ def elements(state):
     return a, e, r
 
 
+def orbit_frame(r, v):
+    t = v / torch.linalg.norm(v, dim=1, keepdim=True).clamp_min(1e-6)
+    h = torch.cross(r, v, dim=1)
+    w = h / torch.linalg.norm(h, dim=1, keepdim=True).clamp_min(1e-6)
+    s = torch.cross(t, w, dim=1)
+    return t, w, s
+
+
+def body_axis_inertial(q):
+    return qrotate(q, torch.tensor([1.0, 0.0, 0.0], device=q.device)
+                   .expand(q.shape[0], 3))
+
+
 def observe(state, rt, fuel):
     a, e, r = elements(state)
     L = rt; V = torch.sqrt(MU / rt)
-    tdir = qrotate(state[:, 6:10],
-                   torch.tensor([1.0, 0.0, 0.0], device=state.device)
-                   .expand(state.shape[0], 3))
+    b_in = body_axis_inertial(state[:, 6:10])
+    t, w, s = orbit_frame(state[:, 0:3], state[:, 3:6])
     o = torch.cat([
         state[:, 0:3] / L.unsqueeze(1), state[:, 3:6] / V.unsqueeze(1),
         (a / rt - 1.0).unsqueeze(1), e.unsqueeze(1), (r / rt - 1.0).unsqueeze(1),
-        tdir, state[:, 10:13], (fuel / DV_BUDGET).unsqueeze(1),
+        (b_in * t).sum(1, keepdim=True), (b_in * w).sum(1, keepdim=True),
+        (b_in * s).sum(1, keepdim=True), (fuel / DV_BUDGET).unsqueeze(1),
     ], dim=1)
     return o.clamp(-10.0, 10.0)
 
@@ -119,7 +133,7 @@ class Policy(nn.Module):
     def __init__(self, hidden: int = 128) -> None:
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(16, hidden), nn.Tanh(),
+            nn.Linear(13, hidden), nn.Tanh(),
             nn.Linear(hidden, hidden), nn.Tanh(),
             nn.Linear(hidden, 4), nn.Tanh(),
         )
@@ -157,24 +171,38 @@ def sample_orbits(batch, device, gen):
 
     r_vec = rot(pf); v_vec = rot(pfv)
     q0 = qnorm(torch.randn(batch, 4, generator=gen, device=device))
-    w0 = (u(-0.01, 0.01).unsqueeze(1)).repeat(1, 3)
+    w0 = torch.zeros(batch, 3, device=device)
     state = torch.cat([r_vec, v_vec, q0, w0], dim=1)
     return state, r_a
 
 
+def point_rate(q, d):
+    """Differentiable body-rate command to slew the thrust axis toward d (capped)."""
+    b_in = body_axis_inertial(q)
+    err_in = torch.cross(b_in, d, dim=1)
+    err_body = qrotate(qconj(q), err_in)
+    omega = K_P * err_body
+    n = torch.linalg.norm(omega, dim=1, keepdim=True).clamp_min(1e-9)
+    scale = (MAX_RATE / n).clamp(max=1.0)
+    return omega * scale
+
+
 def rollout_loss(policy, state, rt, horizon,
-                 w_dv=0.5, w_crash=5.0, w_point=0.5, w_prog=0.02):
+                 w_dv=0.5, w_crash=5.0, w_prog=0.02):
     fuel = torch.full((state.shape[0],), DV_BUDGET, device=state.device)
     dv_total = torch.zeros(state.shape[0], device=state.device)
     crash = torch.zeros(state.shape[0], device=state.device)
     prog = torch.zeros(state.shape[0], device=state.device)
-    point = torch.zeros(state.shape[0], device=state.device)
     for _ in range(horizon):
         obs = observe(state, rt, fuel.clamp_min(0.0))
         act = policy(obs)
-        omega_cmd = act[:, 0:3] * MAX_RATE
+        coeffs = act[:, 0:3]                     # orbit-frame direction (decision)
         throttle = act[:, 3].clamp(0.0, 1.0)
         for _ in range(REPEAT):
+            t, w, s = orbit_frame(state[:, 0:3], state[:, 3:6])
+            d = coeffs[:, 0:1] * t + coeffs[:, 1:2] * w + coeffs[:, 2:3] * s
+            d = d / torch.linalg.norm(d, dim=1, keepdim=True).clamp_min(1e-6)
+            omega_cmd = point_rate(state[:, 6:10], d)     # deterministic controller
             gate = (fuel > 0).float()
             thr = throttle * gate
             dv_sub = thr * A_THRUST * DT
@@ -183,19 +211,12 @@ def rollout_loss(policy, state, rt, horizon,
             state = rk4(state, omega_cmd, thr)
             rnow = torch.linalg.norm(state[:, 0:3], dim=1)
             crash = crash + torch.relu(R_BODY - rnow) ** 2
-        # pointing: encourage body axis aligned with prograde
-        v = state[:, 3:6]
-        vmag = torch.linalg.norm(v, dim=1).clamp_min(1e-6)
-        tdir = qrotate(state[:, 6:10],
-                       torch.tensor([1.0, 0.0, 0.0], device=state.device)
-                       .expand(state.shape[0], 3))
-        point = point + (1.0 - (tdir * v).sum(1) / vmag)
         a, e, r = elements(state)
         prog = prog + ((a - rt).abs() / rt).clamp(max=5.0) + e.clamp(max=2.0)
     a, e, r = elements(state)
     orbit = ((a - rt).abs() / rt).clamp(max=5.0) + e.clamp(max=2.0)
     return (orbit.mean() + w_dv * dv_total.mean() + w_crash * crash.mean()
-            + w_point * point.mean() / horizon + w_prog * prog.mean())
+            + w_prog * prog.mean())
 
 
 @torch.no_grad()
