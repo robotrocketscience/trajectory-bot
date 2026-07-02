@@ -43,3 +43,4 @@ docs/reports-src/
 .~lock.*#
 *.swp
 .DS_Store
+.rnd/
