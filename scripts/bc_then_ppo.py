@@ -98,15 +98,16 @@ def evaluate(model, n_episodes: int = 100, seed: int = 200_000) -> dict:
 
 
 def behavior_clone(model, obs, act, epochs: int, batch: int = 512,
-                   burn_weight: float = 30.0) -> None:
+                   burn_weight: float = 10.0, lr: float = 1e-3) -> None:
     """Supervised-regress the policy's mean action onto demo actions. Burn steps
-    are rare (~2%), so they are up-weighted, else the net just learns to coast."""
+    are the minority, so they are up-weighted, else the net just learns to coast.
+    Uses a dedicated optimizer at a higher LR than PPO's for a proper fit."""
     device = model.device
     obs_t = torch.as_tensor(obs, dtype=torch.float32, device=device)
     act_t = torch.as_tensor(act, dtype=torch.float32, device=device)
     is_burn = (act_t.abs().sum(dim=1) > 0).float()
     weight = 1.0 + burn_weight * is_burn                     # per-sample weight
-    opt = model.policy.optimizer
+    opt = torch.optim.Adam(model.policy.parameters(), lr=lr)
     n = len(obs_t)
     for ep in range(epochs):
         perm = torch.randperm(n, device=device)
