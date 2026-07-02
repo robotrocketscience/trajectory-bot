@@ -126,17 +126,25 @@ def main() -> None:
     obs, act, exp_succ = collect_expert(args.episodes, seed0=0)
     print(f"expert demos: {len(obs)} transitions, controller success={exp_succ:.1%}", flush=True)
 
+    best = -1.0
     for it in range(args.iters):
         wmse = fit(model, obs, act, args.bc_epochs, device)
         s = base.evaluate(model, device, n_episodes=100)
-        print(f"iter {it}: dataset={len(obs)}  wmse={wmse:.5f}  success={s:.2%}", flush=True)
+        star = ""
+        if s > best:                                   # keep the BEST policy, not the last
+            best = s
+            torch.save(model.state_dict(), args.save)
+            star = "  <- saved best"
+        print(f"iter {it}: dataset={len(obs)}  wmse={wmse:.5f}  success={s:.2%}{star}", flush=True)
         if it < args.iters - 1:
             n_obs, n_act = dagger_rollout(model, args.episodes // 2, 10_000 * (it + 1), device)
             obs = np.concatenate([obs, n_obs])
             act = np.concatenate([act, n_act])
 
-    torch.save(model.state_dict(), args.save)
-    print(f"saved {args.save}")
+    # final larger-sample eval of the best saved policy
+    model.load_state_dict(torch.load(args.save))
+    s = base.evaluate(model, device, n_episodes=300)
+    print(f"FINAL(best): success={s:.2%}  saved {args.save}", flush=True)
 
 
 if __name__ == "__main__":
