@@ -56,10 +56,12 @@ def qconj(q: torch.Tensor) -> torch.Tensor:
 
 
 def qrotate(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-    z = torch.zeros(v.shape[0], 1, device=v.device)
-    qv = torch.cat([z, v], dim=1)
-    r = qmul(qmul(q, qv), qconj(q))
-    return r[:, 1:]
+    # fused rotation: v' = v + 2w(u x v) + 2 u x (u x v)  [u = vector part]
+    # ~3 ops vs ~40 for qmul(qmul(q,[0,v]),q*) -> far fewer kernel launches.
+    w = q[:, 0:1]
+    u = q[:, 1:4]
+    t = 2.0 * torch.linalg.cross(u, v, dim=1)
+    return v + w * t + torch.linalg.cross(u, t, dim=1)
 
 
 def qnorm(q: torch.Tensor) -> torch.Tensor:
@@ -241,11 +243,15 @@ def main() -> None:
     ap.add_argument("--horizon", type=int, default=60)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--eval-every", type=int, default=50)
+    ap.add_argument("--compile", action="store_true", help="torch.compile the rk4 step")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--save", type=str, default="models/circularize3d_diffsim.pt")
     args = ap.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    if args.compile:
+        global rk4
+        rk4 = torch.compile(rk4)
     torch.manual_seed(args.seed)
     gen = torch.Generator(device=device).manual_seed(args.seed)
     policy = Policy().to(device)
