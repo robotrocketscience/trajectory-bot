@@ -45,7 +45,8 @@ def collect_demos(n_episodes: int, seed0: int = 100_000):
     (obs, act) demo transitions plus the controller's own success rate."""
     env = build_env()
     cfg = env.cfg
-    dv_per_step = cfg.thrust_acc_max * cfg.dt
+    # Δv delivered by one full-throttle DECISION (dt * decision_repeat substeps).
+    dv_per_step = cfg.thrust_acc_max * cfg.dt * cfg.decision_repeat
     obs_list, act_list = [], []
     successes = 0
     for ep in range(n_episodes):
