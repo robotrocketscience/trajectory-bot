@@ -32,6 +32,10 @@ A_THRUST = 5e-3; RATE_GAIN = 0.1; K_P = 0.5; MAX_RATE = 0.05; DV_BUDGET = 2.0
 # probe at R9d ckpt: 78% of latched episodes end OUT of tolerance, +0.73 km/s
 # wasted post-latch) — there is no loss basin around success.
 ABSORB = False
+# --e-weight: lambda on e in the loss potential. Rank probe at the R11 ckpt showed
+# the average episode WORSENS oe deterministically (a improves, e pumps up — the
+# policy accepts the a-for-e trade at lambda=1); lambda>1 reprices that trade.
+E_WEIGHT = 1.0
 ALT_PERI = (400.0, 800.0); RA_RP = (1.3, 2.5); INC_MAX = np.radians(40.0)
 E_TOL = 0.05; A_TOL = 0.05
 A_MAX = 50.0 * R_BODY          # semimajor-axis ceiling: keeps `a` finite & differentiable
@@ -152,7 +156,7 @@ def orbit_err(state, rt):
     v = snorm(state[:, 3:6], axis=1)
     energy = 0.5 * v ** 2 - MU / r
     esc = jnp.clip(energy * (2.0 * A_MAX / MU) + 1.0, 0.0, None)
-    return jnp.clip(ae, None, 5.0) + jnp.clip(e, None, 2.0) + esc
+    return jnp.clip(ae, None, 5.0) + E_WEIGHT * jnp.clip(e, None, 2.0) + esc
 
 
 def orbit_frame(r, v):
@@ -443,7 +447,7 @@ def adam_step(params, grads, st, lr=3e-4, b1=0.9, b2=0.999, eps=1e-8, clip=1.0):
 
 
 def main():
-    global DV_BUDGET, ABSORB
+    global DV_BUDGET, ABSORB, E_WEIGHT
     ap = argparse.ArgumentParser()
     ap.add_argument("--iters", type=int, default=300)
     ap.add_argument("--batch", type=int, default=256)
@@ -477,11 +481,17 @@ def main():
                          "tests whether fuel starvation is what pins eccentricity")
     ap.add_argument("--absorb", action="store_true",
                     help="success is absorbing in the rollout (env-style termination)")
+    ap.add_argument("--e-weight", type=float, default=1.0,
+                    help="lambda on e in the loss potential (reprices the a-for-e trade)")
+    ap.add_argument("--w-well", type=float, default=1.0,
+                    help="terminal success-well weight (reprices reaching tolerance)")
     args = ap.parse_args()
     DV_BUDGET = args.dv_budget
     ABSORB = args.absorb
+    E_WEIGHT = args.e_weight
     print(f"jax devices: {jax.devices()}  H={args.horizon} K={args.chunk} "
-          f"init={args.init or 'random'} budget={DV_BUDGET} absorb={ABSORB}", flush=True)
+          f"init={args.init or 'random'} budget={DV_BUDGET} absorb={ABSORB} "
+          f"e_w={E_WEIGHT} w_well={args.w_well}", flush=True)
 
     key = random.PRNGKey(args.seed)
     key, kp = random.split(key)
@@ -500,7 +510,8 @@ def main():
             ls0[3] = args.throttle_log_std
         params = (mlp, jnp.asarray(ls0))
         loss_fn = make_loss_stoch(args.horizon, K=max(1, args.chunk), beta=args.entropy,
-                                  w_dv=args.w_dv, w_crash=args.w_crash, w_shape=args.w_orbit)
+                                  w_dv=args.w_dv, w_crash=args.w_crash, w_shape=args.w_orbit,
+                                  w_well=args.w_well)
         diag_fn = jit(lambda p, s, rt: base_diag(p[0], s, rt))   # deterministic mean
     else:
         params = mlp_init if mlp_init is not None else init_params(kp, args.final_init_scale)
