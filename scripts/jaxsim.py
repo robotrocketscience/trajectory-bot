@@ -530,6 +530,8 @@ def main():
                     help="terminal success-well weight (reprices reaching tolerance)")
     ap.add_argument("--phi-dv", action="store_true",
                     help="physics-informed potential: Φ = -dv_to_go (control distance)")
+    ap.add_argument("--clip-grad", type=float, default=0.0,
+                    help="global grad-norm clip (0 = off); raw pre-clip norm logged as gmax")
     args = ap.parse_args()
     DV_BUDGET = args.dv_budget
     ABSORB = args.absorb
@@ -575,6 +577,8 @@ def main():
     # fixed held-out eval batch
     eval_state, eval_rt = sample_orbits(random.PRNGKey(999_983), 512)
 
+    clip_g = float(args.clip_grad)
+
     @jit
     def train_step(params, opt, state, rt, key, lr):
         # lr arrives as a jnp scalar (traced) — a bare Python float would bake into the
@@ -582,6 +586,12 @@ def main():
         loss, grads = vg(params, state, rt, key)
         # Guard on GRADIENT finiteness, not loss (grad can blow while clipped loss is finite).
         gnorm = jnp.sqrt(sum(jnp.sum(g ** 2) for g in jax.tree_util.tree_leaves(grads)))
+        if clip_g > 0.0:
+            # Global-norm clip. Crash-zone gradients through rk4 (gravity ~ 1/r^2) are
+            # unbounded; R10/R13 regime jumps + late loss RISES look like catapult
+            # steps hurling the policy into tanh saturation it never escapes.
+            scale = jnp.minimum(1.0, clip_g / jnp.maximum(gnorm, 1e-12))
+            grads = jax.tree_util.tree_map(lambda g: g * scale, grads)
         new_p, new_o = adam_step(params, grads, opt, lr=lr)
         ok = jnp.isfinite(loss) & jnp.isfinite(gnorm)
         params = jax.tree_util.tree_map(lambda o, n: jnp.where(ok, n, o), params, new_p)
@@ -589,18 +599,22 @@ def main():
         opt = (jax.tree_util.tree_map(lambda o, n: jnp.where(ok, n, o), mo, mn),
                jax.tree_util.tree_map(lambda o, n: jnp.where(ok, n, o), vo, vn),
                jnp.where(ok, tn, to))
-        return params, opt, loss, ok
+        return params, opt, loss, ok, gnorm
 
     t0 = time.time()
     skipped = 0
     best = -1.0
     eta_min = args.lr * 0.1
+    gmax = 0.0                       # max raw (pre-clip) grad norm since last eval line
     for it in range(args.iters):
         key, ks, kt = random.split(key, 3)
         state, rt = sample_orbits(ks, args.batch)
         lr_t = eta_min + 0.5 * (args.lr - eta_min) * (1.0 + np.cos(np.pi * it / args.iters))
-        params, opt, loss, ok = train_step(params, opt, state, rt, kt, jnp.float32(lr_t))
+        params, opt, loss, ok, gn = train_step(params, opt, state, rt, kt, jnp.float32(lr_t))
         skipped += int(not bool(ok))
+        gf = float(gn)
+        if np.isfinite(gf):
+            gmax = max(gmax, gf)
         if it % args.eval_every == 0 or it == args.iters - 1:
             s, dvu, ae, e, cr = (float(x) for x in diag_fn(params, eval_state, eval_rt))
             extra = ""
@@ -614,7 +628,9 @@ def main():
                 star = "  <-best"
             print(f"iter {it:4d}  loss={float(loss):.4f}  success={s:.2%}  "
                   f"dv={dvu:.2f} a_err={ae:.2f} e={e:.2f} crash={cr:.1%}"
-                  f"  skipped={skipped}{extra}{star}  [{time.time()-t0:.0f}s]", flush=True)
+                  f"  gmax={gmax:.1f}  skipped={skipped}{extra}{star}  "
+                  f"[{time.time()-t0:.0f}s]", flush=True)
+            gmax = 0.0
     if args.save:
         save_params(args.save.replace(".npz", "_final.npz"), params, args.explore)
     print(f"done in {time.time()-t0:.0f}s", flush=True)
