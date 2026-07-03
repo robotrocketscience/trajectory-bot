@@ -46,6 +46,13 @@ PHI_DV = False
 # crashing decision itself still backprops its full 20 substeps (the meaningful,
 # bounded deterrent); only post-crash decisions freeze.
 ABSORB_CRASH = False
+# --d-eps: eps in the thrust-direction normalization d/|d|. The gradient of
+# x/sqrt(|x|^2+eps) at x~0 is 1/sqrt(eps) per component — at the default 1e-12
+# that is 1e6, and a COASTING policy (near-zero direction coeffs, e.g. the DAgger
+# expert most decisions) seeds monster gradients every step (R15: gmax 1e12 with
+# crash=0.0%). 1e-4 caps the seed at 100; direction error is negligible once the
+# policy actually burns (|d| >~ 0.1).
+D_EPS = 1e-12
 ALT_PERI = (400.0, 800.0); RA_RP = (1.3, 2.5); INC_MAX = np.radians(40.0)
 E_TOL = 0.05; A_TOL = 0.05
 A_MAX = 50.0 * R_BODY          # semimajor-axis ceiling: keeps `a` finite & differentiable
@@ -273,7 +280,7 @@ def _decision_step(params, carry, rt):
         state, fuel, dv, crash = c2
         t, w, s = orbit_frame(state[:, 0:3], state[:, 3:6])
         d = coeffs[:, 0:1] * t + coeffs[:, 1:2] * w + coeffs[:, 2:3] * s
-        d = d / snorm(d, axis=1, keepdims=True)
+        d = d / snorm(d, axis=1, keepdims=True, eps=D_EPS)
         omega_cmd = point_rate(state[:, 6:10], d)
         gate = (fuel > 0).astype(jnp.float32)
         thr = throttle * gate
@@ -423,7 +430,7 @@ def _decision_step_stoch(mlp, log_std, carry, rt, key):
         state, fuel, dv, crash = c2
         t, w, s = orbit_frame(state[:, 0:3], state[:, 3:6])
         d = coeffs[:, 0:1] * t + coeffs[:, 1:2] * w + coeffs[:, 2:3] * s
-        d = d / snorm(d, axis=1, keepdims=True)
+        d = d / snorm(d, axis=1, keepdims=True, eps=D_EPS)
         omega_cmd = point_rate(state[:, 6:10], d)
         gate = (fuel > 0).astype(jnp.float32); thr = throttle * gate
         dv_sub = thr * A_THRUST * DT
@@ -505,7 +512,7 @@ def adam_step(params, grads, st, lr=3e-4, b1=0.9, b2=0.999, eps=1e-8, clip=1.0):
 
 
 def main():
-    global DV_BUDGET, ABSORB, E_WEIGHT, PHI_DV, ABSORB_CRASH
+    global DV_BUDGET, ABSORB, E_WEIGHT, PHI_DV, ABSORB_CRASH, D_EPS
     ap = argparse.ArgumentParser()
     ap.add_argument("--iters", type=int, default=300)
     ap.add_argument("--batch", type=int, default=256)
@@ -550,16 +557,20 @@ def main():
     ap.add_argument("--absorb-crash", action="store_true",
                     help="episodes freeze once crash accrues (env-style termination; "
                          "kills backprop through sub-surface garbage dynamics)")
+    ap.add_argument("--d-eps", type=float, default=1e-12,
+                    help="eps in thrust-direction normalization (grad seed cap = "
+                         "1/sqrt(eps); raise to 1e-4 to defuse coast-decision bombs)")
     args = ap.parse_args()
     DV_BUDGET = args.dv_budget
     ABSORB = args.absorb
     E_WEIGHT = args.e_weight
     PHI_DV = args.phi_dv
     ABSORB_CRASH = args.absorb_crash
+    D_EPS = args.d_eps
     print(f"jax devices: {jax.devices()}  H={args.horizon} K={args.chunk} "
           f"init={args.init or 'random'} budget={DV_BUDGET} absorb={ABSORB} "
           f"e_w={E_WEIGHT} w_well={args.w_well} phi_dv={PHI_DV} "
-          f"absorb_crash={ABSORB_CRASH}", flush=True)
+          f"absorb_crash={ABSORB_CRASH} d_eps={D_EPS}", flush=True)
 
     key = random.PRNGKey(args.seed)
     key, kp = random.split(key)
