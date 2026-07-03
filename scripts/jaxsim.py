@@ -39,6 +39,13 @@ E_WEIGHT = 1.0
 # --phi-dv: use Φ = -dv_to_go (physics-informed control-distance potential) instead
 # of Φ = -orbit_err for the shaping term. See dv_to_go() for the trap-state math.
 PHI_DV = False
+# --absorb-crash: episodes freeze once crash accrues (env-style termination at the
+# OTHER terminal condition). Without it the rollout integrates 100+ substeps INSIDE
+# the planet (gravity floored, garbage dynamics) and backprop through that segment
+# is the prime suspect for the routine 1e17-1e19 gradient norms (R14-pre). The
+# crashing decision itself still backprops its full 20 substeps (the meaningful,
+# bounded deterrent); only post-crash decisions freeze.
+ABSORB_CRASH = False
 ALT_PERI = (400.0, 800.0); RA_RP = (1.3, 2.5); INC_MAX = np.radians(40.0)
 E_TOL = 0.05; A_TOL = 0.05
 A_MAX = 50.0 * R_BODY          # semimajor-axis ceiling: keeps `a` finite & differentiable
@@ -280,12 +287,16 @@ def _decision_step(params, carry, rt):
     (state, fuel, dv, crash), _ = lax.scan(substep, (state, fuel, dv, crash), None, length=REPEAT)
     ae, e = a_err_e(state, rt)
     latch = latch | ((ae < A_TOL) & (e < E_TOL))            # env-style success latch
-    if ABSORB:
+    if ABSORB or ABSORB_CRASH:
         state0, fuel0, dv0, crash0, latch0 = carry
-        state = jnp.where(latch0[:, None], state0, state)
-        fuel = jnp.where(latch0, fuel0, fuel)
-        dv = jnp.where(latch0, dv0, dv)
-        crash = jnp.where(latch0, crash0, crash)
+        dead = latch0 if ABSORB else jnp.zeros_like(latch0)
+        if ABSORB_CRASH:
+            dead = dead | (crash0 > 0.0)
+        state = jnp.where(dead[:, None], state0, state)
+        fuel = jnp.where(dead, fuel0, fuel)
+        dv = jnp.where(dead, dv0, dv)
+        crash = jnp.where(dead, crash0, crash)
+        latch = jnp.where(dead, latch0, latch)
     return (state, fuel, dv, crash, latch), orbit_err(state, rt)
 
 
@@ -425,12 +436,16 @@ def _decision_step_stoch(mlp, log_std, carry, rt, key):
     (state, fuel, dv, crash), _ = lax.scan(substep, (state, fuel, dv, crash), None, length=REPEAT)
     ae, e = a_err_e(state, rt)
     latch = latch | ((ae < A_TOL) & (e < E_TOL))
-    if ABSORB:
+    if ABSORB or ABSORB_CRASH:
         state0, fuel0, dv0, crash0, latch0 = carry
-        state = jnp.where(latch0[:, None], state0, state)
-        fuel = jnp.where(latch0, fuel0, fuel)
-        dv = jnp.where(latch0, dv0, dv)
-        crash = jnp.where(latch0, crash0, crash)
+        dead = latch0 if ABSORB else jnp.zeros_like(latch0)
+        if ABSORB_CRASH:
+            dead = dead | (crash0 > 0.0)
+        state = jnp.where(dead[:, None], state0, state)
+        fuel = jnp.where(dead, fuel0, fuel)
+        dv = jnp.where(dead, dv0, dv)
+        crash = jnp.where(dead, crash0, crash)
+        latch = jnp.where(dead, latch0, latch)
     return (state, fuel, dv, crash, latch), orbit_err(state, rt)
 
 
@@ -490,7 +505,7 @@ def adam_step(params, grads, st, lr=3e-4, b1=0.9, b2=0.999, eps=1e-8, clip=1.0):
 
 
 def main():
-    global DV_BUDGET, ABSORB, E_WEIGHT, PHI_DV
+    global DV_BUDGET, ABSORB, E_WEIGHT, PHI_DV, ABSORB_CRASH
     ap = argparse.ArgumentParser()
     ap.add_argument("--iters", type=int, default=300)
     ap.add_argument("--batch", type=int, default=256)
@@ -532,14 +547,19 @@ def main():
                     help="physics-informed potential: Φ = -dv_to_go (control distance)")
     ap.add_argument("--clip-grad", type=float, default=0.0,
                     help="global grad-norm clip (0 = off); raw pre-clip norm logged as gmax")
+    ap.add_argument("--absorb-crash", action="store_true",
+                    help="episodes freeze once crash accrues (env-style termination; "
+                         "kills backprop through sub-surface garbage dynamics)")
     args = ap.parse_args()
     DV_BUDGET = args.dv_budget
     ABSORB = args.absorb
     E_WEIGHT = args.e_weight
     PHI_DV = args.phi_dv
+    ABSORB_CRASH = args.absorb_crash
     print(f"jax devices: {jax.devices()}  H={args.horizon} K={args.chunk} "
           f"init={args.init or 'random'} budget={DV_BUDGET} absorb={ABSORB} "
-          f"e_w={E_WEIGHT} w_well={args.w_well} phi_dv={PHI_DV}", flush=True)
+          f"e_w={E_WEIGHT} w_well={args.w_well} phi_dv={PHI_DV} "
+          f"absorb_crash={ABSORB_CRASH}", flush=True)
 
     key = random.PRNGKey(args.seed)
     key, kp = random.split(key)
