@@ -66,12 +66,17 @@ def qnorm(q):
 
 
 # --- functional MLP policy (13 -> 128 -> 128 -> 4, tanh) ---
-def init_params(key):
+def init_params(key, final_scale=1.0):
+    """final_scale=0.01 puts the untrained MEAN policy near coast (throttle≈0).
+    R9b diagnostics showed final_scale=1 random-inits into a saturated random-burn
+    regime (dv=budget, crash≈50% at iter 0) — a different failure mode than torch's
+    near-coast default init, and one the gradient never organizes out of."""
     ks = random.split(key, 3)
-    def layer(k, nin, nout):
-        return (random.normal(k, (nin, nout)) * (1.0 / np.sqrt(nin)),
+    def layer(k, nin, nout, scale=1.0):
+        return (random.normal(k, (nin, nout)) * (scale / np.sqrt(nin)),
                 jnp.zeros((nout,)))
-    return [layer(ks[0], 13, HID), layer(ks[1], HID, HID), layer(ks[2], HID, 4)]
+    return [layer(ks[0], 13, HID), layer(ks[1], HID, HID),
+            layer(ks[2], HID, 4, scale=final_scale)]
 
 
 def policy(params, obs):
@@ -283,6 +288,112 @@ def make_success(H):
     return success
 
 
+def make_diag(H):
+    """Diagnostic eval: what does the (deterministic-mean) policy actually DO?
+    Returns success, mean dv used, mean final a_err, mean final e — discriminates
+    'still coasting' (dv≈0) vs 'burning wrong' (dv high, e high) vs 'crashing'."""
+    def diag(params, state, rt):
+        B = state.shape[0]
+        carry = (state, jnp.full((B,), DV_BUDGET), jnp.zeros((B,)),
+                 jnp.zeros((B,)), jnp.zeros((B,), bool))
+        def scanfn(carry, _):
+            carry, _ = _decision_step(params, carry, rt)
+            return carry, None
+        (state, fuel, dv, crash, latch), _ = lax.scan(scanfn, carry, None, length=H)
+        ae, e = a_err_e(state, rt)
+        return latch.mean(), dv.mean(), ae.mean(), e.mean(), (crash > 0).mean()
+    return diag
+
+
+def save_params(path, params, stochastic):
+    mlp, log_std = params if stochastic else (params, None)
+    d = {}
+    for i, (w, b) in enumerate(mlp):
+        d[f"w{i}"] = np.asarray(w); d[f"b{i}"] = np.asarray(b)
+    if log_std is not None:
+        d["log_std"] = np.asarray(log_std)
+    np.savez(path, **d)
+
+
+# --- stochastic exploration (reparameterized / SVG-SAPO) -------------------
+# Deterministic APG can't escape the coast basin (no sampling to probe a burn).
+# A stochastic policy samples actions a = tanh(mean + std·ε) with reparameterized ε
+# so the pathwise dynamics gradient still flows to BOTH mean and std, and an entropy
+# bonus keeps std from collapsing to coast before exploration finds the burn.
+def mlp_raw(params, obs):
+    x = obs
+    for (w, b) in params[:-1]:
+        x = jnp.tanh(x @ w + b)
+    w, b = params[-1]
+    return x @ w + b                     # pre-squash mean (policy = tanh(mlp_raw))
+
+
+def init_params_stoch(key, init_log_std=-1.0):
+    return (init_params(key), jnp.full((4,), init_log_std))   # (mlp, log_std)
+
+
+def _decision_step_stoch(mlp, log_std, carry, rt, key):
+    state, fuel, dv, crash, latch = carry
+    obs = observe(state, rt, jnp.clip(fuel, 0.0, None))
+    mean = mlp_raw(mlp, obs)
+    std = jnp.exp(jnp.clip(log_std, -5.0, 1.0))
+    a = jnp.tanh(mean + std * random.normal(key, mean.shape))
+    coeffs = a[:, 0:3]; throttle = jnp.clip(a[:, 3], 0.0, 1.0)
+
+    def substep(c2, _):
+        state, fuel, dv, crash = c2
+        t, w, s = orbit_frame(state[:, 0:3], state[:, 3:6])
+        d = coeffs[:, 0:1] * t + coeffs[:, 1:2] * w + coeffs[:, 2:3] * s
+        d = d / snorm(d, axis=1, keepdims=True)
+        omega_cmd = point_rate(state[:, 6:10], d)
+        gate = (fuel > 0).astype(jnp.float32); thr = throttle * gate
+        dv_sub = thr * A_THRUST * DT
+        fuel = fuel - dv_sub; dv = dv + dv_sub
+        state = rk4(state, omega_cmd, thr)
+        rnow = snorm(state[:, 0:3], axis=1)
+        crash = crash + jnp.clip((R_BODY - rnow) / R_BODY, 0.0, None) ** 2
+        return (state, fuel, dv, crash), None
+
+    (state, fuel, dv, crash), _ = lax.scan(substep, (state, fuel, dv, crash), None, length=REPEAT)
+    ae, e = a_err_e(state, rt)
+    latch = latch | ((ae < A_TOL) & (e < E_TOL))
+    return (state, fuel, dv, crash, latch), orbit_err(state, rt)
+
+
+def make_loss_stoch(H, K=10, beta=1e-3, w_dv=0.05, w_crash=5.0, w_shape=4.0,
+                    w_well=1.0, sigma=0.15):
+    """Stochastic (reparameterized) truncated-BPTT loss with entropy bonus."""
+    nchunks = (H + K - 1) // K
+
+    def loss(params, state, rt, key):
+        mlp, log_std = params
+        B = state.shape[0]
+        fuel = jnp.full((B,), DV_BUDGET); dv = jnp.zeros((B,)); crash = jnp.zeros((B,))
+        latch = jnp.zeros((B,), bool)
+        phi_prev = -orbit_err(state, rt)
+        total = 0.0
+        for c in range(nchunks):
+            k = min(K, H - c * K)
+            key, ck = random.split(key)
+            keys = random.split(ck, k)
+            carry = (state, fuel, dv, crash, latch)
+            def scanfn(carry, kk):
+                carry, _ = _decision_step_stoch(mlp, log_std, carry, rt, kk)
+                return carry, None
+            (state, fuel, dv, crash, latch), _ = lax.scan(scanfn, carry, keys)
+            phi_now = -orbit_err(state, rt)
+            total = total - w_shape * (phi_now - phi_prev).mean()
+            state = jax.lax.stop_gradient(state)
+            fuel = jax.lax.stop_gradient(fuel)
+            phi_prev = jax.lax.stop_gradient(phi_now)
+        oe_T = orbit_err(state, rt)
+        well = -jnp.exp(-oe_T / sigma)
+        entropy = H * jnp.sum(jnp.clip(log_std, -5.0, 1.0))   # ∝ Gaussian entropy, H injections
+        total = total + w_dv * dv.mean() + w_crash * crash.mean() + w_well * well.mean()
+        return total - beta * entropy
+    return loss
+
+
 # --- manual Adam on a params pytree ---
 def adam_init(params):
     z = jax.tree_util.tree_map(jnp.zeros_like, params)
@@ -318,34 +429,59 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--chunk", type=int, default=10,
                     help="truncated-BPTT chunk length K (0 = full-horizon BPTT)")
+    ap.add_argument("--init", type=str, default="",
+                    help="warm-start from a converted params .npz (else random)")
+    ap.add_argument("--explore", action="store_true",
+                    help="stochastic reparameterized policy + entropy (SAPO) to escape coast basin")
+    ap.add_argument("--entropy", type=float, default=1e-3, help="entropy bonus beta")
+    ap.add_argument("--init-log-std", type=float, default=-1.0)
+    ap.add_argument("--final-init-scale", type=float, default=0.01,
+                    help="final-layer init scale; small => untrained mean ≈ coast")
+    ap.add_argument("--save", type=str, default="models/jaxsim_best.npz")
     args = ap.parse_args()
-    print(f"jax devices: {jax.devices()}  H={args.horizon} K={args.chunk}", flush=True)
+    print(f"jax devices: {jax.devices()}  H={args.horizon} K={args.chunk} "
+          f"init={args.init or 'random'}", flush=True)
 
     key = random.PRNGKey(args.seed)
     key, kp = random.split(key)
-    params = init_params(kp)
-    opt = adam_init(params)
+    mlp_init = None
+    if args.init:
+        d = np.load(args.init)
+        mlp_init = [(jnp.asarray(d["w0"]), jnp.asarray(d["b0"])),
+                    (jnp.asarray(d["w1"]), jnp.asarray(d["b1"])),
+                    (jnp.asarray(d["w2"]), jnp.asarray(d["b2"]))]
 
-    if args.chunk and args.chunk < args.horizon:
-        loss_fn = make_loss_tbptt(args.horizon, K=args.chunk, w_dv=args.w_dv,
-                                  w_crash=args.w_crash, w_shape=args.w_orbit)
+    base_diag = make_diag(args.eval_horizon)
+    if args.explore:
+        mlp = mlp_init if mlp_init is not None else init_params(kp, args.final_init_scale)
+        params = (mlp, jnp.full((4,), args.init_log_std))
+        loss_fn = make_loss_stoch(args.horizon, K=max(1, args.chunk), beta=args.entropy,
+                                  w_dv=args.w_dv, w_crash=args.w_crash, w_shape=args.w_orbit)
+        diag_fn = jit(lambda p, s, rt: base_diag(p[0], s, rt))   # deterministic mean
     else:
-        loss_fn = make_loss(args.horizon, w_orbit=args.w_orbit, w_dv=args.w_dv,
+        params = mlp_init if mlp_init is not None else init_params(kp, args.final_init_scale)
+        if args.chunk and args.chunk < args.horizon:
+            det = make_loss_tbptt(args.horizon, K=args.chunk, w_dv=args.w_dv,
+                                  w_crash=args.w_crash, w_shape=args.w_orbit)
+        else:
+            det = make_loss(args.horizon, w_orbit=args.w_orbit, w_dv=args.w_dv,
                             w_crash=args.w_crash)
-    succ_fn = jit(make_success(args.eval_horizon))
+        loss_fn = lambda p, s, rt, _key: det(p, s, rt)          # ignore key
+        diag_fn = jit(base_diag)
+    opt = adam_init(params)
     vg = jit(value_and_grad(loss_fn))
 
     # fixed held-out eval batch
     eval_state, eval_rt = sample_orbits(random.PRNGKey(999_983), 512)
 
     @jit
-    def train_step(params, opt, state, rt):
-        loss, grads = vg(params, state, rt)
-        # Guard on GRADIENT finiteness, not loss: over the long BPTT chain the grad can
-        # blow to nan/inf while the (clipped) forward loss is still finite — that poisoned
-        # update is what kills training. Skip it (a no-op) instead.
+    def train_step(params, opt, state, rt, key, lr):
+        # lr arrives as a jnp scalar (traced) — a bare Python float would bake into the
+        # graph and force a recompile every iter under cosine decay.
+        loss, grads = vg(params, state, rt, key)
+        # Guard on GRADIENT finiteness, not loss (grad can blow while clipped loss is finite).
         gnorm = jnp.sqrt(sum(jnp.sum(g ** 2) for g in jax.tree_util.tree_leaves(grads)))
-        new_p, new_o = adam_step(params, grads, opt, lr=args.lr)
+        new_p, new_o = adam_step(params, grads, opt, lr=lr)
         ok = jnp.isfinite(loss) & jnp.isfinite(gnorm)
         params = jax.tree_util.tree_map(lambda o, n: jnp.where(ok, n, o), params, new_p)
         (mo, vo, to), (mn, vn, tn) = opt, new_o
@@ -356,15 +492,30 @@ def main():
 
     t0 = time.time()
     skipped = 0
+    best = -1.0
+    eta_min = args.lr * 0.1
     for it in range(args.iters):
-        key, ks = random.split(key)
+        key, ks, kt = random.split(key, 3)
         state, rt = sample_orbits(ks, args.batch)
-        params, opt, loss, ok = train_step(params, opt, state, rt)
+        lr_t = eta_min + 0.5 * (args.lr - eta_min) * (1.0 + np.cos(np.pi * it / args.iters))
+        params, opt, loss, ok = train_step(params, opt, state, rt, kt, jnp.float32(lr_t))
         skipped += int(not bool(ok))
         if it % args.eval_every == 0 or it == args.iters - 1:
-            s = float(succ_fn(params, eval_state, eval_rt))
+            s, dvu, ae, e, cr = (float(x) for x in diag_fn(params, eval_state, eval_rt))
+            extra = ""
+            if args.explore:
+                ls = params[1]
+                extra = f"  std~{float(jnp.exp(jnp.mean(ls))):.3f}"
+            star = ""
+            if s > best and args.save:
+                best = s
+                save_params(args.save, params, args.explore)
+                star = "  <-best"
             print(f"iter {it:4d}  loss={float(loss):.4f}  success={s:.2%}  "
-                  f"skipped={skipped}  [{time.time()-t0:.0f}s]", flush=True)
+                  f"dv={dvu:.2f} a_err={ae:.2f} e={e:.2f} crash={cr:.1%}"
+                  f"  skipped={skipped}{extra}{star}  [{time.time()-t0:.0f}s]", flush=True)
+    if args.save:
+        save_params(args.save.replace(".npz", "_final.npz"), params, args.explore)
     print(f"done in {time.time()-t0:.0f}s", flush=True)
 
 
