@@ -36,6 +36,9 @@ ABSORB = False
 # the average episode WORSENS oe deterministically (a improves, e pumps up — the
 # policy accepts the a-for-e trade at lambda=1); lambda>1 reprices that trade.
 E_WEIGHT = 1.0
+# --phi-dv: use Φ = -dv_to_go (physics-informed control-distance potential) instead
+# of Φ = -orbit_err for the shaping term. See dv_to_go() for the trap-state math.
+PHI_DV = False
 ALT_PERI = (400.0, 800.0); RA_RP = (1.3, 2.5); INC_MAX = np.radians(40.0)
 E_TOL = 0.05; A_TOL = 0.05
 A_MAX = 50.0 * R_BODY          # semimajor-axis ceiling: keeps `a` finite & differentiable
@@ -159,6 +162,46 @@ def orbit_err(state, rt):
     return jnp.clip(ae, None, 5.0) + E_WEIGHT * jnp.clip(e, None, 2.0) + esc
 
 
+def dv_to_go(state, rt):
+    """Smooth two-impulse Δv estimate from the current orbit to circular at rt.
+
+    Physics-informed potential (R13). The oe-potential's level sets ignore control
+    distance: from the initial ellipse (apo=rt) circularization is ONE apoapsis burn
+    (~1.04 km/s at ra/rp=1.75), while the 'improved' state every run reaches
+    (a=rt, e=0.30) still needs ~1.04 km/s (two burns) — oe fell 0.49->0.30 while
+    true progress was ZERO, so the policy spends the whole budget standing still.
+    Φ = -dv_to_go makes shaping reward = actual progress toward the maneuver.
+    Both burn orders evaluated, min taken (subgradient fine); rp/ra clamped so the
+    estimate stays finite for degenerate/near-escape orbits (esc term still covers
+    the escape direction; crash penalty covers sub-surface periapses).
+    """
+    a, e = elements(state)
+    e_c = jnp.clip(e, 0.0, 0.95)
+    lo, hi = 0.3 * R_BODY, 3.0 * A_MAX
+    rp = jnp.clip(a * (1.0 - e_c), lo, hi)
+    ra = jnp.clip(a * (1.0 + e_c), lo, hi)
+    a_cur = 0.5 * (rp + ra)
+    v_t = jnp.sqrt(MU / rt)
+
+    def vis_viva(r, aa):
+        return jnp.sqrt(jnp.clip(MU * (2.0 / r - 1.0 / aa), 1e-8, None))
+
+    def two_burn(r_burn):
+        a_tr = 0.5 * (r_burn + rt)
+        dv1 = jnp.abs(vis_viva(r_burn, a_tr) - vis_viva(r_burn, a_cur))
+        dv2 = jnp.abs(v_t - vis_viva(rt, a_tr))
+        return dv1 + dv2
+
+    return jnp.minimum(two_burn(ra), two_burn(rp))
+
+
+def potential(state, rt):
+    """Shaping potential Φ. --phi-dv switches from -orbit_err to -dv_to_go."""
+    if PHI_DV:
+        return -dv_to_go(state, rt)
+    return -orbit_err(state, rt)
+
+
 def orbit_frame(r, v):
     t = v / snorm(v, axis=1, keepdims=True)
     h = cross(r, v)
@@ -251,13 +294,13 @@ def make_loss(H, w_orbit=4.0, w_dv=0.05, w_crash=5.0, w_shape=1.0, w_well=1.0, s
         B = state.shape[0]
         carry = (state, jnp.full((B,), DV_BUDGET), jnp.zeros((B,)),
                  jnp.zeros((B,)), jnp.zeros((B,), bool))
-        phi0 = -orbit_err(state, rt)
+        phi0 = potential(state, rt)
         def scanfn(carry, _):
             carry, oe = _decision_step(params, carry, rt)
             return carry, oe
         (state, fuel, dv, crash, latch), oes = lax.scan(scanfn, carry, None, length=H)
         oe_T = orbit_err(state, rt)
-        shape = (-oe_T) - phi0                             # Ng-1999 potential (telescoped)
+        shape = potential(state, rt) - phi0                # Ng-1999 potential (telescoped)
         well = -jnp.exp(-oe_T / sigma)
         loss = (w_orbit * oe_T.mean() + w_dv * dv.mean() + w_crash * crash.mean()
                 - w_shape * shape.mean() + w_well * well.mean())
@@ -278,7 +321,7 @@ def make_loss_tbptt(H, K=10, w_dv=0.05, w_crash=5.0, w_shape=4.0, w_well=1.0, si
         B = state.shape[0]
         fuel = jnp.full((B,), DV_BUDGET); dv = jnp.zeros((B,)); crash = jnp.zeros((B,))
         latch = jnp.zeros((B,), bool)
-        phi_prev = -orbit_err(state, rt)
+        phi_prev = potential(state, rt)
         total = 0.0
         for c in range(nchunks):
             k = min(K, H - c * K)
@@ -287,7 +330,7 @@ def make_loss_tbptt(H, K=10, w_dv=0.05, w_crash=5.0, w_shape=4.0, w_well=1.0, si
                 carry, _ = _decision_step(params, carry, rt)
                 return carry, None
             (state, fuel, dv, crash, latch), _ = lax.scan(scanfn, carry, None, length=k)
-            phi_now = -orbit_err(state, rt)
+            phi_now = potential(state, rt)
             total = total - w_shape * (phi_now - phi_prev).mean()   # = w_shape*Δorbit_err
             # truncate BPTT: cut the physics chain + shaping baseline across the boundary
             state = jax.lax.stop_gradient(state)
@@ -401,7 +444,7 @@ def make_loss_stoch(H, K=10, beta=1e-3, w_dv=0.05, w_crash=5.0, w_shape=4.0,
         B = state.shape[0]
         fuel = jnp.full((B,), DV_BUDGET); dv = jnp.zeros((B,)); crash = jnp.zeros((B,))
         latch = jnp.zeros((B,), bool)
-        phi_prev = -orbit_err(state, rt)
+        phi_prev = potential(state, rt)
         total = 0.0
         for c in range(nchunks):
             k = min(K, H - c * K)
@@ -412,7 +455,7 @@ def make_loss_stoch(H, K=10, beta=1e-3, w_dv=0.05, w_crash=5.0, w_shape=4.0,
                 carry, _ = _decision_step_stoch(mlp, log_std, carry, rt, kk)
                 return carry, None
             (state, fuel, dv, crash, latch), _ = lax.scan(scanfn, carry, keys)
-            phi_now = -orbit_err(state, rt)
+            phi_now = potential(state, rt)
             total = total - w_shape * (phi_now - phi_prev).mean()
             state = jax.lax.stop_gradient(state)
             fuel = jax.lax.stop_gradient(fuel)
@@ -447,7 +490,7 @@ def adam_step(params, grads, st, lr=3e-4, b1=0.9, b2=0.999, eps=1e-8, clip=1.0):
 
 
 def main():
-    global DV_BUDGET, ABSORB, E_WEIGHT
+    global DV_BUDGET, ABSORB, E_WEIGHT, PHI_DV
     ap = argparse.ArgumentParser()
     ap.add_argument("--iters", type=int, default=300)
     ap.add_argument("--batch", type=int, default=256)
@@ -485,13 +528,16 @@ def main():
                     help="lambda on e in the loss potential (reprices the a-for-e trade)")
     ap.add_argument("--w-well", type=float, default=1.0,
                     help="terminal success-well weight (reprices reaching tolerance)")
+    ap.add_argument("--phi-dv", action="store_true",
+                    help="physics-informed potential: Φ = -dv_to_go (control distance)")
     args = ap.parse_args()
     DV_BUDGET = args.dv_budget
     ABSORB = args.absorb
     E_WEIGHT = args.e_weight
+    PHI_DV = args.phi_dv
     print(f"jax devices: {jax.devices()}  H={args.horizon} K={args.chunk} "
           f"init={args.init or 'random'} budget={DV_BUDGET} absorb={ABSORB} "
-          f"e_w={E_WEIGHT} w_well={args.w_well}", flush=True)
+          f"e_w={E_WEIGHT} w_well={args.w_well} phi_dv={PHI_DV}", flush=True)
 
     key = random.PRNGKey(args.seed)
     key, kp = random.split(key)
