@@ -26,6 +26,12 @@ from jax import lax, jit, value_and_grad, random
 MU = 398600.4418; R_BODY = 6378.137
 DT = 10.0; REPEAT = 20
 A_THRUST = 5e-3; RATE_GAIN = 0.1; K_P = 0.5; MAX_RATE = 0.05; DV_BUDGET = 2.0
+# --absorb: success is absorbing in the rollout (env-style termination). Without it
+# the loss grades the FINAL state of a full 60-decision rollout, so an episode that
+# reaches tolerance mid-episode is dragged off target by exploration noise (latch
+# probe at R9d ckpt: 78% of latched episodes end OUT of tolerance, +0.73 km/s
+# wasted post-latch) — there is no loss basin around success.
+ABSORB = False
 ALT_PERI = (400.0, 800.0); RA_RP = (1.3, 2.5); INC_MAX = np.radians(40.0)
 E_TOL = 0.05; A_TOL = 0.05
 A_MAX = 50.0 * R_BODY          # semimajor-axis ceiling: keeps `a` finite & differentiable
@@ -137,7 +143,16 @@ def a_err_e(state, rt):
 
 def orbit_err(state, rt):
     ae, e = a_err_e(state, rt)
-    return jnp.clip(ae, None, 5.0) + jnp.clip(e, None, 2.0)
+    # Escape term: the energy clamp in elements() makes a (and thus ae) gradient-dead
+    # once a would exceed A_MAX, and the ae clip below kills it past 5.0 — R10 showed
+    # the optimizer parks on that plateau (mean e>1.4 for 1100 iters, no way back).
+    # relu(energy/(MU/2A_MAX) + 1) is 0 for all orbits below the clamp and grows
+    # linearly in energy beyond it — smooth in (r, v), so the plateau has a slope home.
+    r = jnp.maximum(snorm(state[:, 0:3], axis=1), R_BODY)
+    v = snorm(state[:, 3:6], axis=1)
+    energy = 0.5 * v ** 2 - MU / r
+    esc = jnp.clip(energy * (2.0 * A_MAX / MU) + 1.0, 0.0, None)
+    return jnp.clip(ae, None, 5.0) + jnp.clip(e, None, 2.0) + esc
 
 
 def orbit_frame(r, v):
@@ -218,6 +233,12 @@ def _decision_step(params, carry, rt):
     (state, fuel, dv, crash), _ = lax.scan(substep, (state, fuel, dv, crash), None, length=REPEAT)
     ae, e = a_err_e(state, rt)
     latch = latch | ((ae < A_TOL) & (e < E_TOL))            # env-style success latch
+    if ABSORB:
+        state0, fuel0, dv0, crash0, latch0 = carry
+        state = jnp.where(latch0[:, None], state0, state)
+        fuel = jnp.where(latch0, fuel0, fuel)
+        dv = jnp.where(latch0, dv0, dv)
+        crash = jnp.where(latch0, crash0, crash)
     return (state, fuel, dv, crash, latch), orbit_err(state, rt)
 
 
@@ -357,6 +378,12 @@ def _decision_step_stoch(mlp, log_std, carry, rt, key):
     (state, fuel, dv, crash), _ = lax.scan(substep, (state, fuel, dv, crash), None, length=REPEAT)
     ae, e = a_err_e(state, rt)
     latch = latch | ((ae < A_TOL) & (e < E_TOL))
+    if ABSORB:
+        state0, fuel0, dv0, crash0, latch0 = carry
+        state = jnp.where(latch0[:, None], state0, state)
+        fuel = jnp.where(latch0, fuel0, fuel)
+        dv = jnp.where(latch0, dv0, dv)
+        crash = jnp.where(latch0, crash0, crash)
     return (state, fuel, dv, crash, latch), orbit_err(state, rt)
 
 
@@ -416,6 +443,7 @@ def adam_step(params, grads, st, lr=3e-4, b1=0.9, b2=0.999, eps=1e-8, clip=1.0):
 
 
 def main():
+    global DV_BUDGET, ABSORB
     ap = argparse.ArgumentParser()
     ap.add_argument("--iters", type=int, default=300)
     ap.add_argument("--batch", type=int, default=256)
@@ -435,12 +463,25 @@ def main():
                     help="stochastic reparameterized policy + entropy (SAPO) to escape coast basin")
     ap.add_argument("--entropy", type=float, default=1e-3, help="entropy bonus beta")
     ap.add_argument("--init-log-std", type=float, default=-1.0)
+    ap.add_argument("--throttle-log-std", type=float, default=None,
+                    help="separate init log-std for the throttle dim (R9e: throttle noise "
+                         "at sigma=0.37 spends the whole dv budget by ~decision 15/60, "
+                         "killing late-episode gradient — keep direction exploration rich, "
+                         "start throttle sigma small)")
     ap.add_argument("--final-init-scale", type=float, default=0.01,
                     help="final-layer init scale; small => untrained mean ≈ coast")
     ap.add_argument("--save", type=str, default="models/jaxsim_best.npz")
+    ap.add_argument("--dv-budget", type=float, default=DV_BUDGET,
+                    help="dv budget (km/s). R10 diagnostic: a large budget keeps the fuel "
+                         "gate from zeroing the pathwise gradient late in the episode — "
+                         "tests whether fuel starvation is what pins eccentricity")
+    ap.add_argument("--absorb", action="store_true",
+                    help="success is absorbing in the rollout (env-style termination)")
     args = ap.parse_args()
+    DV_BUDGET = args.dv_budget
+    ABSORB = args.absorb
     print(f"jax devices: {jax.devices()}  H={args.horizon} K={args.chunk} "
-          f"init={args.init or 'random'}", flush=True)
+          f"init={args.init or 'random'} budget={DV_BUDGET} absorb={ABSORB}", flush=True)
 
     key = random.PRNGKey(args.seed)
     key, kp = random.split(key)
@@ -454,7 +495,10 @@ def main():
     base_diag = make_diag(args.eval_horizon)
     if args.explore:
         mlp = mlp_init if mlp_init is not None else init_params(kp, args.final_init_scale)
-        params = (mlp, jnp.full((4,), args.init_log_std))
+        ls0 = np.full(4, args.init_log_std, dtype=np.float32)
+        if args.throttle_log_std is not None:
+            ls0[3] = args.throttle_log_std
+        params = (mlp, jnp.asarray(ls0))
         loss_fn = make_loss_stoch(args.horizon, K=max(1, args.chunk), beta=args.entropy,
                                   w_dv=args.w_dv, w_crash=args.w_crash, w_shape=args.w_orbit)
         diag_fn = jit(lambda p, s, rt: base_diag(p[0], s, rt))   # deterministic mean
