@@ -245,7 +245,7 @@ def point_rate(q, d):
     return omega * jnp.clip(MAX_RATE / n, None, 1.0)
 
 
-def sample_orbits(key, batch, frac=1.0, full_mix=0.25):
+def sample_orbits(key, batch, frac=1.0, full_mix=0.25, rt_jitter=0.0):
     """Start-orbit sampler. frac<1 = reverse curriculum (Florensa 1707.05300):
     shrink perigee toward the apoapsis target, r_p' = r_a - (r_a - r_p)*frac, so
     starts sit near/inside the success well where the objective has live gradient
@@ -275,7 +275,16 @@ def sample_orbits(key, batch, frac=1.0, full_mix=0.25):
     r_vec = rot(pf); v_vec = rot(pfv)
     q0 = qnorm(random.normal(k[5], (batch, 4)))
     w0 = jnp.zeros((batch, 3))
-    return jnp.concatenate([r_vec, v_vec, q0, w0], axis=1), r_a
+    rt = r_a
+    if rt_jitter > 0.0:
+        # R29 exposed a degenerate conditioning: rt == r_a in EVERY training
+        # episode, so the policy cannot fly any other commanded target
+        # (aim-scaling collapsed OOD instead of tracing the fuel trade).
+        # Decouple target from apoapsis. fold_in keeps all existing streams
+        # (eval sets, training draws) bit-identical when jitter is off.
+        kj = random.fold_in(key, 424_242)
+        rt = r_a * (1.0 + rt_jitter * (2.0 * random.uniform(kj, (batch,)) - 1.0))
+    return jnp.concatenate([r_vec, v_vec, q0, w0], axis=1), rt
 
 
 def _decision_step(params, carry, rt):
@@ -583,6 +592,11 @@ def main():
     ap.add_argument("--trim-ep", type=int, default=0,
                     help="trimmed mean: DROP the top-k episodes by grad norm before "
                          "averaging (0 = off); composes with --clip-ep on survivors")
+    ap.add_argument("--rt-jitter", type=float, default=0.0,
+                    help="decouple target from apoapsis in TRAINING batches: "
+                         "rt = r_a * (1 +- U(0,j)). Breaks the rt==r_a degeneracy "
+                         "R29 exposed (policy OOD for any commanded target != its "
+                         "own apoapsis). Eval sets stay rt=r_a")
     ap.add_argument("--curriculum", action="store_true",
                     help="reverse curriculum on start states (Florensa 1707.05300): "
                          "training batches sampled at difficulty frac (start 0.05), "
@@ -651,6 +665,9 @@ def main():
 
     # fixed held-out eval batch
     eval_state, eval_rt = sample_orbits(random.PRNGKey(999_983), 512)
+    eval_j = None
+    if args.rt_jitter > 0.0:
+        eval_j = sample_orbits(random.PRNGKey(999_991), 512, rt_jitter=args.rt_jitter)
 
     ref_mlp = act_ref = obs0 = None
     if args.ref:
@@ -761,7 +778,7 @@ def main():
     frac = 0.05 if args.curriculum else 1.0
     for it in range(args.iters):
         key, ks, kt = random.split(key, 3)
-        state, rt = sample_orbits(ks, args.batch, frac=frac)
+        state, rt = sample_orbits(ks, args.batch, frac=frac, rt_jitter=args.rt_jitter)
         lr_t = eta_min + 0.5 * (args.lr - eta_min) * (1.0 + np.cos(np.pi * it / args.iters))
         params, opt, loss, ok, gn = train_step(params, opt, state, rt, kt, jnp.float32(lr_t))
         skipped += int(not bool(ok))
@@ -779,6 +796,8 @@ def main():
                 extra += f"  raw={sr:.2%}"
             if anchor_vg is not None:
                 extra += f"  aloss={float(anchor_vg(eval_p)[0]):.4f}"
+            if eval_j is not None:
+                extra += f"  jit={float(diag_fn(eval_p, *eval_j)[0]):.2%}"
             if args.curriculum:
                 cs, crt = sample_orbits(random.PRNGKey(777_000 + int(frac * 100)),
                                         eval_state.shape[0], frac=frac, full_mix=0.0)
