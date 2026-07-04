@@ -45,6 +45,10 @@ the verification harness exists precisely so any future "beats the baseline"
 claim survives scrutiny (integrator-energy audit, float64 re-flight,
 clamp-region exclusion, per-geometry closed-form baselines).
 
+Scope: the policies are trained for circularize-at-apoapsis with the target
+radius equal to the initial apoapsis; generalizing across commanded target
+radii is an open research lane, not a shipped capability.
+
 <p align="center">
   <img src="docs/media/trajectory.png" width="820" alt="one episode: path and orbital elements"/>
 </p>
