@@ -560,6 +560,9 @@ def main():
     ap.add_argument("--d-eps", type=float, default=1e-12,
                     help="eps in thrust-direction normalization (grad seed cap = "
                          "1/sqrt(eps); raise to 1e-4 to defuse coast-decision bombs)")
+    ap.add_argument("--clip-ep", type=float, default=0.0,
+                    help="per-episode grad-norm clip before the batch mean (0 = off); "
+                         "monsters can no longer own the update direction")
     args = ap.parse_args()
     DV_BUDGET = args.dv_budget
     ABSORB = args.absorb
@@ -610,13 +613,41 @@ def main():
 
     clip_g = float(args.clip_grad)
 
+    clip_ep = float(args.clip_ep)
+    if clip_ep > 0.0:
+        # Per-episode gradient clipping: rollout gradients are heavy-tailed (R14-pre:
+        # routine 1e12-1e19 monsters), and with only a GLOBAL clip the update becomes a
+        # unit step in the monster episode's direction — 1 pathological episode owns
+        # the whole batch (R14/R15). Clipping each episode's grad to norm<=clip_ep
+        # BEFORE the mean lets the healthy majority outvote the monsters. vmap cost is
+        # the same batching the plain loss already does by hand.
+        base_vg = value_and_grad(lambda p, s1, r1, k1: loss_fn(p, s1[None], r1[None], k1))
+        vg_ep = jax.vmap(base_vg, in_axes=(None, 0, 0, 0))
+
+        def vg(p, s, rt, key):  # noqa: F811 — replaces the batch-grad path
+            keys = random.split(key, s.shape[0])
+            losses, grads = vg_ep(p, s, rt, keys)
+            # sanitize per-episode: a non-finite episode must not poison the mean
+            # (inf * scale-0 would be NaN) — zero it out instead of skipping the batch
+            grads = jax.tree_util.tree_map(lambda g: jnp.where(jnp.isfinite(g), g, 0.0), grads)
+            losses = jnp.where(jnp.isfinite(losses), losses, 0.0)
+            norms = jnp.sqrt(sum(jnp.sum(g.reshape(g.shape[0], -1) ** 2, axis=1)
+                                 for g in jax.tree_util.tree_leaves(grads)))
+            scale = jnp.minimum(1.0, clip_ep / jnp.maximum(norms, 1e-12))
+            grads = jax.tree_util.tree_map(
+                lambda g: jnp.mean(g * scale.reshape((-1,) + (1,) * (g.ndim - 1)), axis=0),
+                grads)
+            return (losses.mean(), norms.max()), grads
+
     @jit
     def train_step(params, opt, state, rt, key, lr):
         # lr arrives as a jnp scalar (traced) — a bare Python float would bake into the
         # graph and force a recompile every iter under cosine decay.
-        loss, grads = vg(params, state, rt, key)
+        out, grads = vg(params, state, rt, key)
+        loss, epmax = out if clip_ep > 0.0 else (out, jnp.float32(0.0))
         # Guard on GRADIENT finiteness, not loss (grad can blow while clipped loss is finite).
         gnorm = jnp.sqrt(sum(jnp.sum(g ** 2) for g in jax.tree_util.tree_leaves(grads)))
+        g_report = jnp.maximum(gnorm, epmax)   # telemetry keeps showing raw monsters
         if clip_g > 0.0:
             # Global-norm clip. Crash-zone gradients through rk4 (gravity ~ 1/r^2) are
             # unbounded; R10/R13 regime jumps + late loss RISES look like catapult
@@ -630,7 +661,7 @@ def main():
         opt = (jax.tree_util.tree_map(lambda o, n: jnp.where(ok, n, o), mo, mn),
                jax.tree_util.tree_map(lambda o, n: jnp.where(ok, n, o), vo, vn),
                jnp.where(ok, tn, to))
-        return params, opt, loss, ok, gnorm
+        return params, opt, loss, ok, g_report
 
     t0 = time.time()
     skipped = 0
