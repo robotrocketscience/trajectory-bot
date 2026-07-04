@@ -41,16 +41,28 @@ state, rt = J.sample_orbits(random.PRNGKey(555_557), BATCH)
 state = state.astype(jnp.float64)
 rt = rt.astype(jnp.float64)
 
-# closed-form impulsive optimum from the initial osculating ellipse to a
-# circular orbit at rt = r_a(0): one tangential burn at apoapsis
+# Two impulsive baselines from the initial osculating ellipse (one tangential
+# burn at apoapsis, coast there free):
+#   dv_imp: EXACT circularization at rt = r_a(0)  (what "Hohmann" prices)
+#   dv_box: cheapest SUCCESS-ADMISSIBLE terminal orbit — the tolerance-box
+#           corner (|a'/rt-1|<=5%, e'<=0.05 -> ra/a' = 1.05, v' = sqrt(0.95
+#           MU/ra)). Success tolerances make the box corner up to ~10-24%
+#           cheaper than exact circularization (biggest for low-e0 starts), so
+#           dvr<1 vs dv_imp is expected tolerance exploitation, NOT a beaten
+#           baseline. Only dv below dv_box is anomalous in a two-body sim.
 a0, e0 = J.elements(state)
 ra0 = a0 * (1.0 + e0)
 v_apo = jnp.sqrt(jnp.clip(J.MU * (2.0 / ra0 - 1.0 / a0), 1e-12, None))
 v_circ = jnp.sqrt(J.MU / rt)
 dv_imp = jnp.abs(v_circ - v_apo)
+v_box = jnp.sqrt(0.95 * J.MU / ra0)
+dv_box = jnp.abs(v_box - v_apo)
 
-print(f"f64, dt={J.DT}s, {BATCH} fresh episodes; impulsive baseline "
-      f"median={float(jnp.median(dv_imp)):.4f} km/s", flush=True)
+print(f"f64, dt={J.DT}s, {BATCH} fresh episodes; impulsive baselines "
+      f"exact median={float(jnp.median(dv_imp)):.4f} km/s, "
+      f"box-corner median={float(jnp.median(dv_box)):.4f} km/s "
+      f"(box/exact median={float(jnp.median(dv_box / jnp.maximum(dv_imp, 1e-9))):.3f})",
+      flush=True)
 
 
 def rollout(mlp):
@@ -78,13 +90,14 @@ for ckpt in sys.argv[1:]:
     ae, e = J.a_err_e(st, rt)
     clean = latch & (crash == 0.0)
     n_latch = int(latch.sum()); n_clean = int(clean.sum())
-    ratio = dv / jnp.maximum(dv_imp, 1e-6)
-    r_clean = ratio[clean]
-    below = float((r_clean < 1.0).mean()) if n_clean else float("nan")
+    r_exact = (dv / jnp.maximum(dv_imp, 1e-6))[clean]
+    r_box = (dv / jnp.maximum(dv_box, 1e-6))[clean]
     print(f"{ckpt:30s} success={float(latch.mean()):6.2%}  crashed-any="
           f"{float((crash > 0).mean()):.2%}  clean-latched={n_clean}", flush=True)
     if n_clean:
-        print(f"{'':30s} dv/dv_impulsive on clean latches: "
-              f"median={float(jnp.median(r_clean)):.4f}  mean={float(r_clean.mean()):.4f}  "
-              f"p10={float(jnp.percentile(r_clean, 10)):.4f}  frac<1: {below:.1%}",
+        print(f"{'':30s} vs EXACT circ: median={float(jnp.median(r_exact)):.4f} "
+              f"mean={float(r_exact.mean()):.4f}  frac<1: {float((r_exact < 1).mean()):.1%}",
               flush=True)
+        print(f"{'':30s} vs BOX corner: median={float(jnp.median(r_box)):.4f} "
+              f"mean={float(r_box.mean()):.4f}  frac<1: {float((r_box < 1).mean()):.1%}"
+              f"   (<1 here = anomalous, investigate)", flush=True)
