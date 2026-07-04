@@ -1,5 +1,23 @@
 # Roadmap — maneuvers, missions, and the optimality question
 
+## Current status (2026-07-02)
+
+- **2D circularize:** solved — diff-sim policy gradient ~76–80%, Δv ~1.24× optimal
+  (Milestone 1, merged).
+- **3D circularize (full quaternion attitude, decision-layer control):** solved at
+  **~80% via imitation** (DAgger of the scripted apoapsis-burn expert). Milestone 2
+  is PR #4 (`feat/attitude-3d`).
+- **JAX/XLA port:** the diff-sim hot path is ported to JAX (`scripts/jaxsim.py`,
+  `feat/jax-rollout`) — numerically exact vs torch, **~50× faster** (0.27 vs 13.3
+  s/iter). R&D now iterates in ~90 s. See [JAX_PORT.md](JAX_PORT.md).
+- **From-scratch 3D (the "beat the textbook" prerequisite):** *not yet.* Diagnosed
+  the full chain (mis-scaled objective → long-BPTT gradient explosion → coast basin)
+  and fixed numerics + objective, but deterministic analytic policy gradient can't
+  escape the **coast basin** (no exploration), and warm-start can't refine the expert
+  past ~80%. **Imitation is the current ceiling.** Next research levers to actually
+  answer the optimality question below: stochastic exploration (SAPO/entropy),
+  learned-critic SHAC, or fixing the loss↔success gap. Details in JAX_PORT.md.
+
 ## Guiding principle: optimize the true objective, don't imitate the textbook
 
 The diff-sim policy gradient minimizes **actual Δv** (backprop through the real
