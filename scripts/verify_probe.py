@@ -35,7 +35,7 @@ J.PHI_DV = True
 J.D_EPS = 1e-4
 
 BATCH = 1024
-diag = jax.jit(J.make_diag(120))
+CHUNK = 128   # f64 x 200-substep decision scans OOM a 12GB card at batch 1024
 
 state, rt = J.sample_orbits(random.PRNGKey(555_557), BATCH)
 state = state.astype(jnp.float64)
@@ -54,15 +54,20 @@ print(f"f64, dt={J.DT}s, {BATCH} fresh episodes; impulsive baseline "
 
 
 def rollout(mlp):
-    B = state.shape[0]
-    carry = (state, jnp.full((B,), J.DV_BUDGET, dtype=state.dtype),
-             jnp.zeros((B,), dtype=state.dtype), jnp.zeros((B,), dtype=state.dtype),
-             jnp.zeros((B,), bool))
-    step = jax.jit(lambda c: J._decision_step(mlp, c, rt))
-    for _ in range(120):
-        carry, _ = step(carry)
-    st, fuel, dv, crash, latch = carry
-    return st, dv, crash, latch
+    step = jax.jit(lambda c, r: J._decision_step(mlp, c, r)[0])
+    sts, dvs, crs, lts = [], [], [], []
+    for i in range(0, BATCH, CHUNK):
+        s_c, r_c = state[i:i + CHUNK], rt[i:i + CHUNK]
+        B = s_c.shape[0]
+        carry = (s_c, jnp.full((B,), J.DV_BUDGET, dtype=s_c.dtype),
+                 jnp.zeros((B,), dtype=s_c.dtype), jnp.zeros((B,), dtype=s_c.dtype),
+                 jnp.zeros((B,), bool))
+        for _ in range(120):
+            carry = step(carry, r_c)
+        st, fuel, dv, crash, latch = carry
+        sts.append(st); dvs.append(dv); crs.append(crash); lts.append(latch)
+    return (jnp.concatenate(sts), jnp.concatenate(dvs),
+            jnp.concatenate(crs), jnp.concatenate(lts))
 
 
 for ckpt in sys.argv[1:]:
