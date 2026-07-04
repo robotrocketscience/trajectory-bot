@@ -87,7 +87,8 @@ bank progress with an EMA policy, polish at low lr**. The failure modes en
 route (truncation bias in short-horizon BPTT, absorbing-state mismatches,
 potential-shaping traps that pay for zero progress, a normalize-epsilon that
 seeded 1e6 gradients at every coast decision) are documented in
-[`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) and the audit trail.
+[`docs/EXPERIMENTS_3D.md`](docs/EXPERIMENTS_3D.md) (3-D campaign) and
+[`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) (2-D milestone).
 
 ## Quickstart
 
@@ -122,7 +123,8 @@ Checkpoints and run logs are not committed (they regenerate by training);
 | `scripts/jaxsim.py` | JAX/XLA 3-D diff-sim trainer (the research workhorse) with the full knob set. |
 | `scripts/verify_probe.py` | float64/dt=1 s claim-verification harness (exact + tolerance-box baselines). |
 | `scripts/eval_probe.py`, `norm_probe.py`, `step_probe.py`, … | The measurement toolkit the optimizer forensics ran on. |
-| `docs/EXPERIMENTS.md`, `docs/ROADMAP.md`, `docs/AUDIT.md` | Methodology, target maneuvers, and the audit of the 2021 code. |
+| `docs/EXPERIMENTS_3D.md`, `docs/EXPERIMENTS.md` | The optimizer-forensics campaign (3-D) and the 2-D milestone methodology. |
+| `docs/ROADMAP.md`, `docs/AUDIT.md` | Target maneuvers and the audit of the 2021 code. |
 | `v2/`, `archive/` | The 2021 course project, kept as the honest "before" picture (excluded from CI/typing). |
 
 ## Roadmap
