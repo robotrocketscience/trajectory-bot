@@ -380,6 +380,7 @@ def make_diag(H):
     'still coasting' (dv≈0) vs 'burning wrong' (dv high, e high) vs 'crashing'."""
     def diag(params, state, rt):
         B = state.shape[0]
+        dvgo0 = dv_to_go(state, rt)          # analytic two-impulse cost from the start
         carry = (state, jnp.full((B,), DV_BUDGET), jnp.zeros((B,)),
                  jnp.zeros((B,)), jnp.zeros((B,), bool))
         def scanfn(carry, _):
@@ -387,7 +388,11 @@ def make_diag(H):
             return carry, None
         (state, fuel, dv, crash, latch), _ = lax.scan(scanfn, carry, None, length=H)
         ae, e = a_err_e(state, rt)
-        return latch.mean(), dv.mean(), ae.mean(), e.mean(), (crash > 0).mean()
+        # dv-ratio on successful episodes: spent dv (frozen at latch under ABSORB)
+        # over the analytic benchmark — THE beats-the-analytic-transfer number.
+        lf = latch.astype(jnp.float32)
+        dvr = jnp.sum(lf * dv / jnp.maximum(dvgo0, 1e-3)) / jnp.maximum(lf.sum(), 1.0)
+        return latch.mean(), dv.mean(), ae.mean(), e.mean(), (crash > 0).mean(), dvr
     return diag
 
 
@@ -563,6 +568,9 @@ def main():
     ap.add_argument("--clip-ep", type=float, default=0.0,
                     help="per-episode grad-norm clip before the batch mean (0 = off); "
                          "monsters can no longer own the update direction")
+    ap.add_argument("--ref", type=str, default="",
+                    help="reference policy .npz; logs mean action drift on the eval "
+                         "batch (RL's-Razor-style collapse early warning)")
     args = ap.parse_args()
     DV_BUDGET = args.dv_budget
     ABSORB = args.absorb
@@ -610,6 +618,13 @@ def main():
 
     # fixed held-out eval batch
     eval_state, eval_rt = sample_orbits(random.PRNGKey(999_983), 512)
+
+    ref_mlp = act_ref = obs0 = None
+    if args.ref:
+        dref = np.load(args.ref)
+        ref_mlp = [(jnp.asarray(dref[f"w{i}"]), jnp.asarray(dref[f"b{i}"])) for i in range(3)]
+        obs0 = observe(eval_state, eval_rt, jnp.full((eval_state.shape[0],), DV_BUDGET))
+        act_ref = policy(ref_mlp, obs0)
 
     clip_g = float(args.clip_grad)
 
@@ -678,11 +693,15 @@ def main():
         if np.isfinite(gf):
             gmax = max(gmax, gf)
         if it % args.eval_every == 0 or it == args.iters - 1:
-            s, dvu, ae, e, cr = (float(x) for x in diag_fn(params, eval_state, eval_rt))
-            extra = ""
+            s, dvu, ae, e, cr, dvr = (float(x) for x in diag_fn(params, eval_state, eval_rt))
+            extra = f"  dvr={dvr:.2f}" if s > 0 else ""
+            if ref_mlp is not None:
+                mlp_now = params[0] if args.explore else params
+                drift = float(jnp.abs(policy(mlp_now, obs0) - act_ref).mean())
+                extra += f"  drift={drift:.4f}"
             if args.explore:
                 ls = params[1]
-                extra = f"  std~{float(jnp.exp(jnp.mean(ls))):.3f}"
+                extra += f"  std~{float(jnp.exp(jnp.mean(ls))):.3f}"
             star = ""
             if s > best and args.save:
                 best = s
