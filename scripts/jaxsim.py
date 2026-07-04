@@ -245,11 +245,20 @@ def point_rate(q, d):
     return omega * jnp.clip(MAX_RATE / n, None, 1.0)
 
 
-def sample_orbits(key, batch):
-    k = random.split(key, 6)
+def sample_orbits(key, batch, frac=1.0, full_mix=0.25):
+    """Start-orbit sampler. frac<1 = reverse curriculum (Florensa 1707.05300):
+    shrink perigee toward the apoapsis target, r_p' = r_a - (r_a - r_p)*frac, so
+    starts sit near/inside the success well where the objective has live gradient
+    (frac->0 = nearly circular at target radius; frac=1 = full task, bit-exact
+    legacy path). full_mix keeps that fraction of the batch at full difficulty
+    so the frontier stays connected to the real task (anti-forgetting)."""
+    k = random.split(key, 7)
     def u(kk, lo, hi): return lo + (hi - lo) * random.uniform(kk, (batch,))
     r_p = R_BODY + u(k[0], *ALT_PERI)
     r_a = r_p * u(k[1], *RA_RP)
+    if frac < 1.0:
+        eff = jnp.where(random.uniform(k[6], (batch,)) < full_mix, 1.0, frac)
+        r_p = r_a - (r_a - r_p) * eff
     a = 0.5 * (r_p + r_a); e = (r_a - r_p) / (r_a + r_p)
     p = a * (1 - e ** 2); h = jnp.sqrt(MU * p)
     nu = u(k[2], 0.0, 2 * np.pi); r = p / (1 + e * jnp.cos(nu))
@@ -574,6 +583,20 @@ def main():
     ap.add_argument("--trim-ep", type=int, default=0,
                     help="trimmed mean: DROP the top-k episodes by grad norm before "
                          "averaging (0 = off); composes with --clip-ep on survivors")
+    ap.add_argument("--curriculum", action="store_true",
+                    help="reverse curriculum on start states (Florensa 1707.05300): "
+                         "training batches sampled at difficulty frac (start 0.05), "
+                         "25%% of each batch at full difficulty; every eval, if "
+                         "success on a current-frac probe set >= 0.75, frac += 0.05. "
+                         "Headline eval set stays full-difficulty")
+    ap.add_argument("--anchor", type=float, default=0.0,
+                    help="BC-anchor weight (TD3+BC 2106.06860 / RL's Razor): adds "
+                         "w * MSE(policy, init-policy actions) on a frozen 8192-obs "
+                         "set collected from the INIT policy's own rollouts, as a "
+                         "separate smooth gradient added to the rollout gradient. "
+                         "Guards against systematic drift off a warm-start peak "
+                         "(R22: collapse into the burn-in-place trap with drift "
+                         "0.155->0.45). Det path only")
     ap.add_argument("--ema", type=float, default=0.0,
                     help="Polyak/EMA decay for an averaged policy (0 = off; e.g. 0.995 "
                          "~ 200-iter horizon). Passive w.r.t. training: raw params keep "
@@ -636,6 +659,28 @@ def main():
         obs0 = observe(eval_state, eval_rt, jnp.full((eval_state.shape[0],), DV_BUDGET))
         act_ref = policy(ref_mlp, obs0)
 
+    # BC anchor: freeze the INIT policy's own visited-state distribution once,
+    # then every update adds w_a * dMSE/dparams toward the init actions on it.
+    # The anchor gradient is smooth and bounded (tanh MSE) — no monsters.
+    anchor_vg = None
+    w_a = float(args.anchor)
+    if w_a > 0.0:
+        assert mlp_init is not None and not args.explore, "--anchor needs --init, det path"
+        a_state, a_rt = sample_orbits(random.PRNGKey(424_243), 512)
+        a_carry = (a_state, jnp.full((512,), DV_BUDGET), jnp.zeros((512,)),
+                   jnp.zeros((512,)), jnp.zeros((512,), bool))
+        a_step = jit(lambda c: _decision_step(mlp_init, c, a_rt))
+        obs_list = []
+        for _ in range(args.horizon):
+            obs_list.append(observe(a_carry[0], a_rt, jnp.clip(a_carry[1], 0.0, None)))
+            a_carry, _ = a_step(a_carry)
+        all_obs = jnp.concatenate(obs_list, axis=0)
+        idx = random.permutation(random.PRNGKey(31_415), all_obs.shape[0])[:8192]
+        anchor_obs = all_obs[idx]
+        anchor_act = policy(mlp_init, anchor_obs)
+        anchor_vg = jit(value_and_grad(
+            lambda p: ((policy(p, anchor_obs) - anchor_act) ** 2).mean()))
+
     clip_g = float(args.clip_grad)
 
     clip_ep = float(args.clip_ep)
@@ -680,6 +725,9 @@ def main():
         # graph and force a recompile every iter under cosine decay.
         out, grads = vg(params, state, rt, key)
         loss, epmax = out if per_ep else (out, jnp.float32(0.0))
+        if anchor_vg is not None:
+            _, ag = anchor_vg(params)
+            grads = jax.tree_util.tree_map(lambda g, a: g + w_a * a, grads, ag)
         # Guard on GRADIENT finiteness, not loss (grad can blow while clipped loss is finite).
         gnorm = jnp.sqrt(sum(jnp.sum(g ** 2) for g in jax.tree_util.tree_leaves(grads)))
         g_report = jnp.maximum(gnorm, epmax)   # telemetry keeps showing raw monsters
@@ -710,9 +758,10 @@ def main():
     best = -1.0
     eta_min = args.lr * 0.1
     gmax = 0.0                       # max raw (pre-clip) grad norm since last eval line
+    frac = 0.05 if args.curriculum else 1.0
     for it in range(args.iters):
         key, ks, kt = random.split(key, 3)
-        state, rt = sample_orbits(ks, args.batch)
+        state, rt = sample_orbits(ks, args.batch, frac=frac)
         lr_t = eta_min + 0.5 * (args.lr - eta_min) * (1.0 + np.cos(np.pi * it / args.iters))
         params, opt, loss, ok, gn = train_step(params, opt, state, rt, kt, jnp.float32(lr_t))
         skipped += int(not bool(ok))
@@ -728,6 +777,15 @@ def main():
             if ema_p is not None:
                 sr = float(diag_fn(params, eval_state, eval_rt)[0])
                 extra += f"  raw={sr:.2%}"
+            if anchor_vg is not None:
+                extra += f"  aloss={float(anchor_vg(eval_p)[0]):.4f}"
+            if args.curriculum:
+                cs, crt = sample_orbits(random.PRNGKey(777_000 + int(frac * 100)),
+                                        eval_state.shape[0], frac=frac, full_mix=0.0)
+                s_curr = float(diag_fn(eval_p, cs, crt)[0])
+                if s_curr >= 0.75:
+                    frac = min(1.0, round(frac + 0.05, 2))
+                extra += f"  frac={frac:.2f} s_cur={s_curr:.0%}"
             if ref_mlp is not None:
                 mlp_now = eval_p[0] if args.explore else eval_p
                 drift = float(jnp.abs(policy(mlp_now, obs0) - act_ref).mean())
