@@ -17,7 +17,7 @@ Experiment code (excluded from the strict-typed library).
   uv run --with "jax[cuda12]" python scripts/jaxsim.py --iters 300 --eval-every 25
 """
 from __future__ import annotations
-import argparse, time
+import argparse, sys, time
 import numpy as np
 import jax, jax.numpy as jnp
 from jax import lax, jit, value_and_grad, random
@@ -629,6 +629,10 @@ def main():
           f"init={args.init or 'random'} budget={DV_BUDGET} absorb={ABSORB} "
           f"e_w={E_WEIGHT} w_well={args.w_well} phi_dv={PHI_DV} "
           f"absorb_crash={ABSORB_CRASH} d_eps={D_EPS} ema={args.ema}", flush=True)
+    # full argv in the log: the header above echoes only some flags, and the
+    # calibrated stack lives in non-defaults — R33 launch 1 was voided by a
+    # silently-missing flag set. Every run log must be self-describing.
+    print("argv: " + " ".join(sys.argv[1:]), flush=True)
 
     key = random.PRNGKey(args.seed)
     key, kp = random.split(key)
