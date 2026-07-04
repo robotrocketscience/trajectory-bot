@@ -574,6 +574,13 @@ def main():
     ap.add_argument("--trim-ep", type=int, default=0,
                     help="trimmed mean: DROP the top-k episodes by grad norm before "
                          "averaging (0 = off); composes with --clip-ep on survivors")
+    ap.add_argument("--ema", type=float, default=0.0,
+                    help="Polyak/EMA decay for an averaged policy (0 = off; e.g. 0.995 "
+                         "~ 200-iter horizon). Passive w.r.t. training: raw params keep "
+                         "training; eval/best-checkpointing switch to the EMA policy, "
+                         "with the raw policy's success logged as raw= for a paired "
+                         "within-run control (one-step probe: success is knife-edge "
+                         "sensitive to single Adam steps, so in-run evals ride jitter)")
     args = ap.parse_args()
     DV_BUDGET = args.dv_budget
     ABSORB = args.absorb
@@ -584,7 +591,7 @@ def main():
     print(f"jax devices: {jax.devices()}  H={args.horizon} K={args.chunk} "
           f"init={args.init or 'random'} budget={DV_BUDGET} absorb={ABSORB} "
           f"e_w={E_WEIGHT} w_well={args.w_well} phi_dv={PHI_DV} "
-          f"absorb_crash={ABSORB_CRASH} d_eps={D_EPS}", flush=True)
+          f"absorb_crash={ABSORB_CRASH} d_eps={D_EPS} ema={args.ema}", flush=True)
 
     key = random.PRNGKey(args.seed)
     key, kp = random.split(key)
@@ -691,6 +698,13 @@ def main():
                jnp.where(ok, tn, to))
         return params, opt, loss, ok, g_report
 
+    ema_p = None
+    if args.ema > 0.0:
+        ema_p = params
+        tau = float(args.ema)
+        ema_fn = jit(lambda e, p: jax.tree_util.tree_map(
+            lambda a, b: tau * a + (1.0 - tau) * b, e, p))
+
     t0 = time.time()
     skipped = 0
     best = -1.0
@@ -702,14 +716,20 @@ def main():
         lr_t = eta_min + 0.5 * (args.lr - eta_min) * (1.0 + np.cos(np.pi * it / args.iters))
         params, opt, loss, ok, gn = train_step(params, opt, state, rt, kt, jnp.float32(lr_t))
         skipped += int(not bool(ok))
+        if ema_p is not None:
+            ema_p = ema_fn(ema_p, params)
         gf = float(gn)
         if np.isfinite(gf):
             gmax = max(gmax, gf)
         if it % args.eval_every == 0 or it == args.iters - 1:
-            s, dvu, ae, e, cr, dvr = (float(x) for x in diag_fn(params, eval_state, eval_rt))
+            eval_p = ema_p if ema_p is not None else params
+            s, dvu, ae, e, cr, dvr = (float(x) for x in diag_fn(eval_p, eval_state, eval_rt))
             extra = f"  dvr={dvr:.2f}" if s > 0 else ""
+            if ema_p is not None:
+                sr = float(diag_fn(params, eval_state, eval_rt)[0])
+                extra += f"  raw={sr:.2%}"
             if ref_mlp is not None:
-                mlp_now = params[0] if args.explore else params
+                mlp_now = eval_p[0] if args.explore else eval_p
                 drift = float(jnp.abs(policy(mlp_now, obs0) - act_ref).mean())
                 extra += f"  drift={drift:.4f}"
             if args.explore:
@@ -718,7 +738,7 @@ def main():
             star = ""
             if s > best and args.save:
                 best = s
-                save_params(args.save, params, args.explore)
+                save_params(args.save, eval_p, args.explore)
                 star = "  <-best"
             print(f"iter {it:4d}  loss={float(loss):.4f}  success={s:.2%}  "
                   f"dv={dvu:.2f} a_err={ae:.2f} e={e:.2f} crash={cr:.1%}"
@@ -727,6 +747,8 @@ def main():
             gmax = 0.0
     if args.save:
         save_params(args.save.replace(".npz", "_final.npz"), params, args.explore)
+        if ema_p is not None:
+            save_params(args.save.replace(".npz", "_ema_final.npz"), ema_p, args.explore)
     print(f"done in {time.time()-t0:.0f}s", flush=True)
 
 
