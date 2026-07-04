@@ -571,6 +571,9 @@ def main():
     ap.add_argument("--ref", type=str, default="",
                     help="reference policy .npz; logs mean action drift on the eval "
                          "batch (RL's-Razor-style collapse early warning)")
+    ap.add_argument("--trim-ep", type=int, default=0,
+                    help="trimmed mean: DROP the top-k episodes by grad norm before "
+                         "averaging (0 = off); composes with --clip-ep on survivors")
     args = ap.parse_args()
     DV_BUDGET = args.dv_budget
     ABSORB = args.absorb
@@ -629,18 +632,22 @@ def main():
     clip_g = float(args.clip_grad)
 
     clip_ep = float(args.clip_ep)
-    if clip_ep > 0.0:
-        # Per-episode gradient clipping: rollout gradients are heavy-tailed (R14-pre:
+    trim_ep = int(args.trim_ep)
+    per_ep = clip_ep > 0.0 or trim_ep > 0
+    if per_ep:
+        # Per-episode gradient handling: rollout gradients are heavy-tailed (R14-pre:
         # routine 1e12-1e19 monsters), and with only a GLOBAL clip the update becomes a
         # unit step in the monster episode's direction — 1 pathological episode owns
-        # the whole batch (R14/R15). Clipping each episode's grad to norm<=clip_ep
-        # BEFORE the mean lets the healthy majority outvote the monsters. vmap cost is
-        # the same batching the plain loss already does by hand.
+        # the whole batch (R14/R15). --clip-ep rescales each episode's grad to
+        # norm<=clip_ep before the mean; --trim-ep DELETES the top-k episodes by norm
+        # (trimmed mean, Yin et al. 2018) — removes the monster without distorting the
+        # healthy magnitude structure, which R19 showed clipping still erodes slowly.
         base_vg = value_and_grad(lambda p, s1, r1, k1: loss_fn(p, s1[None], r1[None], k1))
         vg_ep = jax.vmap(base_vg, in_axes=(None, 0, 0, 0))
 
         def vg(p, s, rt, key):  # noqa: F811 — replaces the batch-grad path
-            keys = random.split(key, s.shape[0])
+            B = s.shape[0]
+            keys = random.split(key, B)
             losses, grads = vg_ep(p, s, rt, keys)
             # sanitize per-episode: a non-finite episode must not poison the mean
             # (inf * scale-0 would be NaN) — zero it out instead of skipping the batch
@@ -648,9 +655,15 @@ def main():
             losses = jnp.where(jnp.isfinite(losses), losses, 0.0)
             norms = jnp.sqrt(sum(jnp.sum(g.reshape(g.shape[0], -1) ** 2, axis=1)
                                  for g in jax.tree_util.tree_leaves(grads)))
-            scale = jnp.minimum(1.0, clip_ep / jnp.maximum(norms, 1e-12))
+            scale = jnp.ones_like(norms)
+            if trim_ep > 0:
+                cutoff = jnp.sort(norms)[B - trim_ep - 1]
+                scale = scale * (norms <= cutoff).astype(jnp.float32)
+            if clip_ep > 0.0:
+                scale = scale * jnp.minimum(1.0, clip_ep / jnp.maximum(norms, 1e-12))
+            kept = jnp.maximum(jnp.sum((scale > 0).astype(jnp.float32)), 1.0)
             grads = jax.tree_util.tree_map(
-                lambda g: jnp.mean(g * scale.reshape((-1,) + (1,) * (g.ndim - 1)), axis=0),
+                lambda g: jnp.sum(g * scale.reshape((-1,) + (1,) * (g.ndim - 1)), axis=0) / kept,
                 grads)
             return (losses.mean(), norms.max()), grads
 
@@ -659,7 +672,7 @@ def main():
         # lr arrives as a jnp scalar (traced) — a bare Python float would bake into the
         # graph and force a recompile every iter under cosine decay.
         out, grads = vg(params, state, rt, key)
-        loss, epmax = out if clip_ep > 0.0 else (out, jnp.float32(0.0))
+        loss, epmax = out if per_ep else (out, jnp.float32(0.0))
         # Guard on GRADIENT finiteness, not loss (grad can blow while clipped loss is finite).
         gnorm = jnp.sqrt(sum(jnp.sum(g ** 2) for g in jax.tree_util.tree_leaves(grads)))
         g_report = jnp.maximum(gnorm, epmax)   # telemetry keeps showing raw monsters
