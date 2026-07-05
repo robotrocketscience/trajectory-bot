@@ -30,7 +30,7 @@ loading the environment, then running a user-selected number of training
 sessions or “games.” mainPPO.py also plots the training progress of the
 agent, as shown here:
 
-<img src="media/image1.png" style="width:5.99931in;height:3.99931in" />
+<img src="media/final-report-training-progress.png" style="width:5.99931in;height:3.99931in" alt="Training progress: running average of previous 100 scores" />
 
 The good news is: I was successful in implementing a reinforcement
 learning algorithm utilizing the fundamental physics of orbital

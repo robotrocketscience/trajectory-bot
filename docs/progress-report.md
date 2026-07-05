@@ -59,7 +59,7 @@ policy in the direction of most value, which translates to a more
 optimized reward as learning goes on.
 
 <figure>
-<img src="media/image1.png" style="width:3.67708in;height:3.64583in"
+<img src="media/progress-report-actor-critic.png" style="width:3.67708in;height:3.64583in"
 alt="Diagram Description automatically generated" />
 <figcaption><p>Figure 1: Actor-Critic RL Diagram [4]</p></figcaption>
 </figure>
