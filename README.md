@@ -24,6 +24,13 @@ flowchart LR
     L -.->|"∂loss/∂θ through the whole rollout"| P
 ```
 
+The whole policy is a tiny **13 → 128 → 128 → 4** tanh MLP — three weight
+matrices, trained end-to-end through the physics:
+
+<p align="center">
+  <img src="docs/media/weights.png" width="820" alt="the three trained policy weight matrices"/>
+</p>
+
 ## Verified results
 
 <p align="center">
@@ -53,6 +60,14 @@ radii is an open research lane, not a shipped capability.
   <img src="docs/media/trajectory.png" width="820" alt="one episode: path and orbital elements"/>
 </p>
 
+It isn't one lucky episode — the final policy solves the distribution. Forty
+random start orbits, each flown to termination, coloured by whether the
+finish landed inside the 5% tolerance box:
+
+<p align="center">
+  <img src="docs/media/generalization.png" width="480" alt="40 random start orbits flown by the final policy, solved vs missed"/>
+</p>
+
 ## Why differentiable simulation
 
 Model-free RL was given every chance and walled out; exploiting the known,
@@ -66,6 +81,14 @@ identical env):
 | Behavior cloning | ~16% | ~1.37 |
 | DAgger | ~45% | ~1.5 |
 | **Diff-sim policy gradient** | **81%** | 1.26 |
+
+In 3-D, differentiable-sim refinement then climbs *past* the imitation oracle
+it started from — each point is the fresh 4096-episode success of a
+checkpoint along the campaign:
+
+<p align="center">
+  <img src="docs/media/progression.png" width="720" alt="fresh-set success climbing from the imitation oracle across the campaign"/>
+</p>
 
 The 3-D stack ports the hot path to **JAX/XLA** (`scripts/jaxsim.py`):
 `lax.scan` + `jit(value_and_grad)` over the full 1200-substep rollout,
@@ -85,6 +108,15 @@ pre-registered hypothesis-refutation rounds (30+, logged verbatim):
 </p>
 
 Same start checkpoint, same seed — only the gradient aggregation differs.
+
+And here is what that refinement buys on a single episode — the *same* start
+orbit flown by four training stages, imitation → refined, cycling so you can
+watch the path tighten onto the target ring:
+
+<p align="center">
+  <img src="docs/media/learning.gif" width="380" alt="the same start orbit flown at four training stages"/>
+</p>
+
 The playbook that survived: **measure the per-episode norm distribution,
 delete the monster tail (trimmed mean), clip survivors at the measured p90,
 bank progress with an EMA policy, polish at low lr**. The failure modes en
@@ -113,7 +145,8 @@ uv run --with "jax[cuda12]" python scripts/jaxsim.py \
 uv run --with jax python scripts/verify_probe.py models/<ckpt>.npz
 
 # regenerate the README figures
-uv run --with jax python scripts/viz_readme.py models/<ckpt>.npz <logdir>
+uv run --with jax --with matplotlib --with pillow python scripts/viz_readme.py models/<ckpt>.npz <logdir>
+uv run --with jax --with matplotlib --with pillow python scripts/viz_readme_extra.py  # progression / weights / generalization / learning gif
 ```
 
 Checkpoints and run logs are not committed (they regenerate by training);
