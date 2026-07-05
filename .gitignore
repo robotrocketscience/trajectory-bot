@@ -36,6 +36,13 @@ plots/
 *.gif
 *.mp4
 
+# ── README figures: the sanctioned small-figure exception to the no-blobs
+#    rule. Regenerable by scripts/viz_readme.py; kept small (< ~250 KB each)
+#    so the public README renders on GitHub. Re-include past the blob globs. ──
+!docs/media/*.png
+!docs/media/*.gif
+!docs/media/*.svg
+
 # ── Report source blobs (converted copies live in docs/*.md) ──
 docs/reports-src/
 
