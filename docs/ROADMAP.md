@@ -43,6 +43,21 @@
   loss of an impulsive plan — small at high thrust-to-weight, growing as ~1/thrust, so
   a direct per-step diff-sim policy earns its keep in the **low-thrust** regime, not the
   high-thrust transfer. Motivates the low-thrust-vs-Edelbaum experiment next.
+- **Low-thrust regime (Tier-2 entry):** `A_THRUST` is now a runtime knob and the
+  sim has a differentiable eclipse thrust-gate (`scripts/jaxsim.py`, flag-gated,
+  two-body bit-exact when off). **E1 (gravity losses):** curriculum-retrained
+  diff-sim policies circularize across a 25× thrust drop (5e-3→2e-4) with no RK4
+  horizon wall in that band — success declines gracefully (92%→77% on fresh-4096)
+  and the finite-burn gravity loss shows up monotonically in Δv (`dvr` 1.20→1.38
+  vs the impulsive lower bound). The control law is thrust-specific (a 2e-4
+  specialist craters at chemical thrust) → argues for a thrust-conditioned
+  generalist. **E2 (eclipse, null):** retraining with the shadow gate did *not*
+  teach the policy to avoid the umbra (thrust-in-shadow 41.8%→41.4%, success
+  67.8%→69.2%) — because circularize-at-own-apoapsis has **no burn-location
+  freedom** (the efficient burn is pinned at apoapsis, whose sun/shadow phase the
+  policy can't change). The eclipse gift needs a multi-rev *transfer* with choice
+  over which sunlit arcs to burn. Probes: `scripts/lowthrust_eval.py`,
+  `scripts/eclipse_probe.py`.
 - **Beat-the-textbook (the deeper optimality question below):** partially answered. On
   the *impulsive* single-body case the agent *matches* the analytic optimum (tolerance
   box ~15% headroom; `verify_probe.py` float64/dt=1 s guards any sub-baseline claim), and
@@ -109,19 +124,29 @@ correct baseline; using Hohmann everywhere would handicap the agent.
    (should beat Hohmann + separate plane change).
 
 ### Tier 2 — finite / low thrust
-6. **Finite-thrust circularize/transfer** — quantify gravity losses vs the
-   impulsive lower bound.
-7. **Edelbaum spiral** (continuous combined altitude+plane). Baseline: Edelbaum Δv.
-8. **Efficient plane-change strategies** — plane change at apoapsis/nodes;
-   apoapsis-raising to cheapen a plane change (a bi-elliptic-like idea for inclination).
+6. **Finite-thrust circularize** — quantify gravity losses vs the impulsive lower
+   bound. **Done (E1):** `dvr` rises 1.20→1.38 over a 25× thrust drop; no RK4
+   horizon wall in the 5e-3→2e-4 band. Eclipse thrust-gate added and tested — no
+   gift on circularize (E2 null; needs burn-location freedom). See Current status.
+7. **Low-thrust multi-rev transfer** (altitude raise / plane change) — the vehicle
+   E2 pointed to: many candidate burn arcs, so eclipse-avoidance is a real degree
+   of freedom, and gravity/turn losses vs **Edelbaum** are the yardstick. This is
+   where the beat-Edelbaum gift can actually appear. *(Next.)*
+8. **Thrust-conditioned generalist** — `A_THRUST` in the observation, one policy
+   across the thrust band (E1 found the control law is thrust-specific). Mirrors
+   the target-conditioning win.
+9. **Edelbaum spiral / full SEP LEO→GEO** — needs orbit-averaged dynamics (RK4 at
+   dt=10 s can't integrate a weeks-long spiral). Separate model; deferred.
+10. **Efficient plane-change strategies** — plane change at apoapsis/nodes;
+    apoapsis-raising to cheapen a plane change (a bi-elliptic-like idea for inclination).
 
 ### Tier 3 — multi-body (original goal; Hohmann not optimal)
-9. **Earth–Moon transfer + capture.** Baselines: patched-conic Hohmann-like transfer
-   *and* low-energy/ballistic capture (does the agent find the WSB route?).
-10. **Earth–Mars transfer + capture** (heliocentric). Baseline: heliocentric Hohmann /
+11. **Earth–Moon transfer + capture.** Baselines: patched-conic Hohmann-like transfer
+    *and* low-energy/ballistic capture (does the agent find the WSB route?).
+12. **Earth–Mars transfer + capture** (heliocentric). Baseline: heliocentric Hohmann /
     porkchop optimum; explore gravity assists.
-11. **Gravity assist / flyby** as a maneuver primitive.
-12. **Low-energy / manifold transfers** — the discovery frontier.
+13. **Gravity assist / flyby** as a maneuver primitive.
+14. **Low-energy / manifold transfers** — the discovery frontier.
 
 **Dynamics decision (locked):** Tier-3 reuses the **JPL Horizons ephemeris +
 N-body** stack from the original 2021 project — real Sun/planet/Moon states, not
@@ -170,13 +195,19 @@ Two ways to build mission-level behavior:
 
 ## Immediate next steps
 1. ~~2-D diff-sim (Milestone 1)~~, ~~3-D circularize~~, ~~target-conditioning~~,
-   ~~combined circularize + plane-change~~ — done (see Current status).
-2. **Low-thrust task (Tier-2):** drop `A_THRUST` toward SEP levels, lengthen the
-   horizon with f&g coast compression, train vs the `edelbaum_dv` baseline. Add
-   **eclipse** (needs the Sun ephemeris wired into `deriv`) so the policy must plan
-   thrust-off arcs — the per-orbit structure that can beat Edelbaum.
-3. Remaining environmental fidelity: drag (aerobraking), SRP (comes with the Sun
-   ephemeris). J2 already in.
-4. The KSC two-burn combined transfer (LEO→GEO) as the first "sequenced" mission,
+   ~~combined circularize + plane-change~~, ~~low-thrust circularize + eclipse
+   plumbing (E1/E2)~~ — done (see Current status).
+2. **Low-thrust multi-rev transfer (Tier-2 #7):** the vehicle E2 pointed to — an
+   altitude-raise or plane-change spiral with many candidate burn arcs, so
+   eclipse-avoidance is a real degree of freedom. Train vs `edelbaum_dv`; turn the
+   eclipse gate back on and test whether the policy defers thrust to sunlit arcs
+   (the concrete beat-Edelbaum gift a fixed continuous-yaw law can't take).
+3. **Thrust-conditioned generalist (Tier-2 #8):** `A_THRUST` into the observation,
+   one policy across the thrust band (E1 found specialists don't transfer).
+4. Remaining environmental fidelity: real Sun ephemeris into `deriv` (moves the
+   fixed `SUN_DIR` shadow to true geometry, and brings SRP); drag (aerobraking).
+   J2 and the (fixed-Sun) eclipse gate already in.
+5. The KSC two-burn combined transfer (LEO→GEO) as the first "sequenced" mission,
    using `combined_plane_altitude_dv` as the baseline.
-5. Then Tier-3 (Earth–Moon / low-energy transfers, ephemeris N-body).
+6. Then Tier-3 (Earth–Moon / low-energy transfers, ephemeris N-body); Edelbaum
+   full-spiral needs orbit-averaged dynamics (separate model).
