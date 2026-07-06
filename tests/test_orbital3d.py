@@ -85,6 +85,26 @@ def test_combined_28deg_leo_geo_margin():
     assert np.degrees(d["split_frac"] * np.radians(28.5)) == pytest.approx(2.2, abs=0.5)
 
 
+def test_combined_circularize_zero_inclination_is_circularize():
+    # no plane change → both strategies collapse to the pure circularize burn
+    r_p, r_a = 20000.0 / 1.75, 20000.0
+    d = orb3.combined_circularize_plane_dv(r_p, r_a, 0.0)
+    circ = orb.circularize_apoapsis_dv(r_p, r_a)
+    assert d["naive"] == pytest.approx(circ, rel=1e-12)
+    assert d["combined"] == pytest.approx(circ, rel=1e-12)
+
+
+def test_combined_circularize_beats_naive():
+    # single vector burn ≤ circularize-then-separate-plane-change (triangle ineq),
+    # and for a 28.5° inclined ellipse the margin is ~25%
+    r_p, r_a = 20000.0 / 1.75, 20000.0
+    d = orb3.combined_circularize_plane_dv(r_p, r_a, np.radians(28.5))
+    assert d["combined"] <= d["naive"] + 1e-12
+    assert d["naive"] == pytest.approx(d["circularize"] + d["plane_change_at_r_a"], rel=1e-12)
+    margin = 1.0 - d["combined"] / d["naive"]
+    assert margin == pytest.approx(0.253, abs=0.01)
+
+
 def test_combined_apogee_matches_vector_dv():
     # independent cross-check: the combined apogee burn is the vector difference
     # between the transfer-ellipse apogee velocity (inclined) and the target

@@ -13,7 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
-from .orbital import MU_EARTH, hohmann_dv, speed_circular, vis_viva
+from .orbital import (
+    MU_EARTH,
+    circularize_apoapsis_dv,
+    hohmann_dv,
+    speed_circular,
+    vis_viva,
+)
 
 Vec = npt.NDArray[np.float64]
 
@@ -71,6 +77,43 @@ def plane_change_dv(v: float, delta_i: float) -> float:
     plane changes are done at apoapsis / combined with a transfer's apogee burn.
     """
     return 2.0 * v * abs(np.sin(delta_i / 2.0))
+
+
+def combined_circularize_plane_dv(
+    r_p: float, r_a: float, delta_i: float, mu: float = MU_EARTH,
+) -> dict[str, float]:
+    """Δv [km/s] baselines for a single-burn combined circularize + plane change.
+
+    An inclined ellipse ``(r_p, r_a)`` at inclination ``delta_i`` [rad] →
+    circular *and equatorial* at ``r_a``, in one apoapsis burn. The single-burn
+    analogue of :func:`combined_plane_altitude_dv`; both yardsticks last:
+
+    - ``naive``: circularize at apoapsis (prograde) and then do a *separate*
+      plane change at the resulting circular speed — the from-the-textbook
+      decomposition, the number the agent is expected to beat.
+    - ``combined``: one vector burn at apoapsis that both circularizes and
+      removes the inclination. By the triangle inequality this can never cost
+      more than ``naive`` (the direct velocity change ≤ any two-leg route), so
+      the margin is guaranteed and grows with ``delta_i``.
+
+    Both collapse to :func:`~tbot.orbital.circularize_apoapsis_dv` at
+    ``delta_i = 0``. Over-raising apoapsis to cheapen the plane change
+    (a bi-elliptic-with-plane-change idea) can beat ``combined`` — a policy that
+    does so is genuine discovery, not bookkeeping.
+    """
+    a_ell = 0.5 * (r_p + r_a)
+    v_apo = vis_viva(r_a, a_ell, mu)          # elliptical apoapsis speed (inclined)
+    v_circ = speed_circular(r_a, mu)          # target circular speed (equatorial)
+    naive = abs(v_circ - v_apo) + 2.0 * v_circ * abs(np.sin(delta_i / 2.0))
+    combined = float(
+        np.sqrt(v_apo * v_apo + v_circ * v_circ
+                - 2.0 * v_apo * v_circ * np.cos(delta_i)))
+    return {
+        "naive": naive,
+        "combined": combined,
+        "circularize": circularize_apoapsis_dv(r_p, r_a, mu),
+        "plane_change_at_r_a": 2.0 * v_circ * abs(np.sin(delta_i / 2.0)),
+    }
 
 
 def combined_plane_altitude_dv(
