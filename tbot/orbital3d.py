@@ -88,4 +88,7 @@ def edelbaum_dv(r0: float, rf: float, delta_i: float, mu: float = MU_EARTH) -> f
     """
     v0 = speed_circular(r0, mu)
     vf = speed_circular(rf, mu)
-    return float(np.sqrt(v0 * v0 - 2.0 * v0 * vf * np.cos(0.5 * np.pi * delta_i) + vf * vf))
+    # arg = (V₀−V_f)² at Δi=0; clamp so float rounding can't make it slightly
+    # negative → NaN (the pure-altitude edge case).
+    arg = v0 * v0 - 2.0 * v0 * vf * np.cos(0.5 * np.pi * delta_i) + vf * vf
+    return float(np.sqrt(max(arg, 0.0)))
