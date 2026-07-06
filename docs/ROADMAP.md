@@ -133,8 +133,13 @@ correct baseline; using Hohmann everywhere would handicap the agent.
    of freedom, and gravity/turn losses vs **Edelbaum** are the yardstick. This is
    where the beat-Edelbaum gift can actually appear. *(Next.)*
 8. **Thrust-conditioned generalist** — `A_THRUST` in the observation, one policy
-   across the thrust band (E1 found the control law is thrust-specific). Mirrors
-   the target-conditioning win.
+   across the thrust band. **Done (Build A):** ONE 14-input net recovers ~97% of the
+   five E1 specialists' band-wide success (82.1% mean vs 84.3%), matching within
+   ~1pt on 4/5 cells and beating at 2e-4. Reached by **distillation + DAgger, NOT
+   diff-sim** — diff-sim fine-tuning left the thrust feature dead (a direct echo of
+   the target-conditioning result). Residual ~11pt gap at the high-thrust
+   near-impulsive cell (covariate shift, shrinking each DAgger round).
+   `scripts/generalist_sim.py`.
 9. **Edelbaum spiral / full SEP LEO→GEO** — needs orbit-averaged dynamics (RK4 at
    dt=10 s can't integrate a weeks-long spiral). Separate model; deferred.
 10. **Efficient plane-change strategies** — plane change at apoapsis/nodes;
