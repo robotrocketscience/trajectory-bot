@@ -128,7 +128,7 @@ def _decision(action_fn, params, carry, rt):
         d = coeffs[:, 0:1] * t + coeffs[:, 1:2] * w + coeffs[:, 2:3] * s
         d = d / J.snorm(d, axis=1, keepdims=True, eps=J.D_EPS)
         omega_cmd = J.point_rate(st[:, 6:10], d)
-        thr = throttle * (fu > 0).astype(jnp.float32)
+        thr = throttle * (fu > 0).astype(jnp.float32) * J.thrust_gate(st[:, 0:3])
         dv_sub = thr * J.A_THRUST * J.DT
         fu = fu - dv_sub; dvv = dvv + dv_sub
         st = J.rk4(st, omega_cmd, thr)
@@ -461,8 +461,19 @@ def main():
     ap.add_argument("--eval-every", type=int, default=25)
     ap.add_argument("--init", type=str, default="models/dagger_combined.npz")
     ap.add_argument("--save", type=str, default="models/dagger_combined.npz")
+    ap.add_argument("--a-thrust", type=float, default=J.A_THRUST,
+                    help="thrust acceleration [km/s^2]; lower toward SEP (~1e-4) for "
+                         "the low-thrust combined maneuver (needs a longer --horizon)")
+    ap.add_argument("--eclipse", action="store_true",
+                    help="force throttle to 0 in Earth's shadow (solar-powered SEP)")
+    ap.add_argument("--sun-dir", type=float, nargs=3, default=None,
+                    metavar=("X", "Y", "Z"), help="fixed inertial Sun direction")
     args = ap.parse_args()
     J.DV_BUDGET = args.budget
+    J.A_THRUST = args.a_thrust
+    J.ECLIPSE = args.eclipse
+    if args.sun_dir is not None:
+        J.SUN_DIR = np.asarray(args.sun_dir, dtype=np.float64)
     J.D_EPS = 1e-4          # cap the coast-direction gradient seed (jaxsim R15 fix)
     if args.validate:
         validate(args.episodes, args.horizon, args.seed)
