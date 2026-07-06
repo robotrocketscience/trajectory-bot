@@ -1,22 +1,34 @@
 # Roadmap — maneuvers, missions, and the optimality question
 
-## Current status (2026-07-02)
+## Current status (2026-07-05)
 
 - **2D circularize:** solved — diff-sim policy gradient ~76–80%, Δv ~1.24× optimal
   (Milestone 1, merged).
 - **3D circularize (full quaternion attitude, decision-layer control):** solved at
-  **~80% via imitation** (DAgger of the scripted apoapsis-burn expert). Milestone 2
-  is PR #4 (`feat/attitude-3d`).
-- **JAX/XLA port:** the diff-sim hot path is ported to JAX (`scripts/jaxsim.py`,
-  `feat/jax-rollout`) — numerically exact vs torch, **~50× faster** (0.27 vs 13.3
-  s/iter). R&D now iterates in ~90 s. See [JAX_PORT.md](JAX_PORT.md).
-- **From-scratch 3D (the "beat the textbook" prerequisite):** *not yet.* Diagnosed
-  the full chain (mis-scaled objective → long-BPTT gradient explosion → coast basin)
-  and fixed numerics + objective, but deterministic analytic policy gradient can't
-  escape the **coast basin** (no exploration), and warm-start can't refine the expert
-  past ~80%. **Imitation is the current ceiling.** Next research levers to actually
-  answer the optimality question below: stochastic exploration (SAPO/entropy),
-  learned-critic SHAC, or fixing the loss↔success gap. Details in JAX_PORT.md.
+  **92.3%** on a fresh 4096-episode set, **Δv 1.03× the impulsive analytic optimum**
+  (matches it; does not yet beat it). Diff-sim refinement climbs *past* the imitation
+  oracle it started from (79.9% → 92.3%). Getting there was optimizer forensics, not
+  a bigger model: backprop-through-physics gradients are heavy-tailed (routine finite
+  1e12–1e19 norms), and the fix was measure-the-distribution → trimmed mean + measured
+  p90 per-episode clip + EMA banking + full-horizon (not truncated) BPTT. See
+  [EXPERIMENTS_3D.md](EXPERIMENTS_3D.md).
+- **JAX/XLA port:** the diff-sim hot path is ported to JAX (`scripts/jaxsim.py`) —
+  numerically exact vs torch, **~50× faster** (0.27 vs 13.3 s/iter); R&D iterates in
+  ~90 s. See [JAX_PORT.md](JAX_PORT.md).
+- **Target-conditioning (commanded target radius ≠ apoapsis):** **solved.** A
+  specialist trained only at rt = apoapsis collapses out-of-distribution (~18% off its
+  radius); a target-conditioned scripted expert DAgger'd into the same network reaches
+  **~99% across ±15% of apoapsis**. The blocker was the imitation source, not capacity
+  or optimization — a slope-based diagnosis and three refuted in-place fixes are
+  recorded in the R&D log. `scripts/dagger_target_jax.py`.
+- **f&g coast propagator:** a differentiable universal-variable Kepler propagator is
+  built and verified on a research branch (4.6e-7 vs RK4 at the decision interval);
+  reserved for Tier-3 long two-body coast arcs (mixed coast/burn batches block a clean
+  training-loop integration).
+- **Beat-the-textbook (the optimality question below):** still open. The agent *matches*
+  the analytic transfer's fuel; the tolerance box quantifies ~15% of headroom, and the
+  verification harness (`verify_probe.py`, float64/dt=1 s) exists so any future
+  sub-baseline claim survives scrutiny.
 
 ## Guiding principle: optimize the true objective, don't imitate the textbook
 

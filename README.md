@@ -52,9 +52,17 @@ the verification harness exists precisely so any future "beats the baseline"
 claim survives scrutiny (integrator-energy audit, float64 re-flight,
 clamp-region exclusion, per-geometry closed-form baselines).
 
-Scope: the policies are trained for circularize-at-apoapsis with the target
-radius equal to the initial apoapsis; generalizing across commanded target
-radii is an open research lane, not a shipped capability.
+Scope: the headline policy above circularizes at its own apoapsis (target
+radius = initial apoapsis). Generalizing across *commanded* target radii —
+a degeneracy where that specialist collapses out-of-distribution (~18%
+success once the target leaves its trained radius) — is solved separately.
+A target-conditioned scripted expert (a two-apse tangential controller that
+drives both apses to the commanded radius) DAgger'd into the same
+13→128→128→4 network reaches **~99% success across commanded radii spanning
+±15% of apoapsis** on fresh 4096-episode sets. The cause was not network
+capacity or optimization but the *imitation source* — the specialist lineage
+was cloned from a fixed-target expert and had never imitated tracking. See
+[`scripts/dagger_target_jax.py`](scripts/dagger_target_jax.py).
 
 <p align="center">
   <img src="docs/media/trajectory.png" width="820" alt="one episode: path and orbital elements"/>
