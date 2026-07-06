@@ -247,21 +247,30 @@ def orbit_frame(r, v):
     return t, w, cross(t, w)
 
 
+# penumbra softening widths [km] for the smooth shadow gate (see thrust_gate). Sharp
+# enough to approximate the cylindrical umbra, smooth enough to give the diff-sim a
+# gradient across the shadow boundary (a hard boolean gate is flat a.e. → no learning
+# signal, and its scf.if select also trips an XLA GPU lowering bug in the scan graph).
+SHADOW_W_ALONG = 200.0     # terminator (r·sun = 0) softening
+SHADOW_W_RADIAL = 100.0    # umbra edge (perp = R_BODY) softening
+
+
 def thrust_gate(r):
-    """Multiplier on throttle for solar-powered low thrust: 1.0 in sunlight, 0.0 in
-    Earth's shadow (a craft with no sun cannot fire). ECLIPSE=False => all-ones, so
-    every substep is bit-exact legacy. Cylindrical umbra: shadowed iff the craft is on
-    the anti-sun side (r·sun < 0) AND its perpendicular distance to the Earth–Sun line
-    is under the planet radius. A hard gate (like the existing fuel gate): its boundary
-    is measure-zero, so backprop still flows through the sunlit substeps."""
+    """Multiplier on throttle for solar-powered low thrust: ≈1.0 in sunlight, ≈0.0 in
+    Earth's shadow (a craft with no sun cannot fire). ECLIPSE=False => exact all-ones,
+    so every substep is bit-exact legacy. Smooth cylindrical umbra: shadow grows as the
+    craft moves onto the anti-sun side (r·sun < 0) AND within the planet radius of the
+    Earth–Sun line. Product of two sigmoids (penumbra-softened) so the boundary is
+    differentiable — the diff-sim can learn to steer burns out of shadow."""
     if not ECLIPSE:
         return jnp.ones((r.shape[0],))
     sun = jnp.asarray(SUN_DIR, dtype=r.dtype)
     sun = sun / snorm(sun[None, :], axis=1)[0]
     proj = (r * sun).sum(axis=1)                       # signed distance along the sun line
     perp = snorm(r - proj[:, None] * sun, axis=1)      # distance off the sun line
-    in_shadow = (proj < 0.0) & (perp < R_BODY)
-    return 1.0 - in_shadow.astype(jnp.float32)
+    behind = jax.nn.sigmoid(-proj / SHADOW_W_ALONG)        # →1 on the anti-sun side
+    inside = jax.nn.sigmoid((R_BODY - perp) / SHADOW_W_RADIAL)  # →1 within the umbra
+    return 1.0 - behind * inside                       # sunlit fraction ∈ (0, 1]
 
 
 def observe(state, rt, fuel):
