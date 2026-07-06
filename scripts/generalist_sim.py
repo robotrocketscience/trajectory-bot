@@ -121,6 +121,118 @@ def sample_thrust(key, B):
     return 10.0 ** (lo + (hi - lo) * random.uniform(key, (B,)))
 
 
+# --- R-A3 distillation: clone the 5 E1 specialists into ONE conditioned net ------
+# (thrust, horizon, 13-input specialist checkpoint) — the E1 diagonal winners.
+SPECIALISTS = [
+    (5e-3, 120, "models/warm_r28_ema_final.npz"),
+    (2e-3, 120, "models/lt_2e-3.npz"),
+    (1e-3, 180, "models/lt_1e-3.npz"),
+    (5e-4, 300, "models/lt_5e-4.npz"),
+    (2e-4, 480, "models/lt_2e-4.npz"),
+]
+
+
+def load13(path):
+    d = np.load(path)
+    return [(jnp.asarray(d[f"w{i}"]), jnp.asarray(d[f"b{i}"])) for i in range(3)]
+
+
+def collect_states(spec13, a_thrust, H, episodes, key):
+    """Roll the 13-input specialist at its thrust; return its visited (state, fuel).
+    The specialist is a function of the 13-obs, so DAgger relabelling needs states."""
+    s0, rt = J.sample_orbits(key, episodes)
+    at = jnp.full((episodes,), a_thrust)
+    B = episodes
+    carry = (s0, jnp.full((B,), J.DV_BUDGET), jnp.zeros((B,)),
+             jnp.zeros((B,)), jnp.zeros((B,), bool))
+
+    def decision(c, _):
+        st, fu = c[0], c[1]
+        act = J.policy(spec13, J.observe(st, rt, jnp.clip(fu, 0.0, None)))  # 13-in
+        coeffs = act[:, 0:3]; throttle = jnp.clip(act[:, 3], 0.0, 1.0)
+
+        def sub(c2, _):
+            s2, f2, d2, cr2 = c2
+            t, w, s = J.orbit_frame(s2[:, 0:3], s2[:, 3:6])
+            d = coeffs[:, 0:1] * t + coeffs[:, 1:2] * w + coeffs[:, 2:3] * s
+            d = d / J.snorm(d, axis=1, keepdims=True, eps=J.D_EPS)
+            omega = J.point_rate(s2[:, 6:10], d)
+            thr = throttle * (f2 > 0).astype(jnp.float32) * J.thrust_gate(s2[:, 0:3])
+            dsub = thr * a_thrust * J.DT
+            f2 = f2 - dsub; d2 = d2 + dsub
+            s2 = rk4_g(s2, omega, thr, a_thrust)
+            cr2 = cr2 + jnp.clip((J.R_BODY - J.snorm(s2[:, 0:3], axis=1)) / J.R_BODY, 0.0, None) ** 2
+            return (s2, f2, d2, cr2), None
+
+        (st2, fu2, dv2, cr2), _ = lax.scan(sub, (c[0], c[1], c[2], c[3]),
+                                           None, length=J.REPEAT)
+        latch = c[4] | ((lambda ae, e: (ae < J.A_TOL) & (e < J.E_TOL))(*J.a_err_e(st2, rt)))
+        dead = c[4]
+        st2 = jnp.where(dead[:, None], c[0], st2)
+        fu2 = jnp.where(dead, c[1], fu2)
+        return (st2, fu2, dv2, cr2, latch), (st, fu, rt)
+
+    _, (st_seq, fu_seq, rt_seq) = lax.scan(decision, carry, None, length=H)
+    return (st_seq.reshape(-1, st_seq.shape[-1]), fu_seq.reshape(-1),
+            rt_seq.reshape(-1), jnp.full((H * episodes,), a_thrust))
+
+
+def bc_loss(params, obs, tgt, wts):
+    per = ((J.policy(params, obs) - tgt) ** 2).mean(axis=1)
+    return (wts * per).sum() / jnp.maximum(wts.sum(), 1.0)
+
+
+@jax.jit
+def bc_step(params, opt, obs, tgt, wts, lr):
+    m, v, t = opt
+    _, g = jax.value_and_grad(bc_loss)(params, obs, tgt, wts)
+    t = t + 1.0
+    b1, b2, eps = 0.9, 0.999, 1e-8
+    m = tree_map(lambda m_, g_: b1 * m_ + (1 - b1) * g_, m, g)
+    v = tree_map(lambda v_, g_: b2 * v_ + (1 - b2) * g_ * g_, v, g)
+    bc = jnp.sqrt(1 - b2 ** t) / (1 - b1 ** t)
+    params = tree_map(lambda p_, m_, v_: p_ - lr * bc * m_ / (jnp.sqrt(v_) + eps),
+                      params, m, v)
+    return params, (m, v, t)
+
+
+def distill(args):
+    """Clone the 5 E1 specialists into one 14-input conditioned net (multi-expert BC).
+    The proper test of H-A: does a single policy with thrust in its obs match the
+    specialists when it is TAUGHT their per-thrust behaviour (vs diff-sim drifting to
+    a compromise)? Mirrors the target-conditioning fix (conditioned expert -> DAgger)."""
+    key = random.PRNGKey(args.seed)
+    obs_all = tgt_all = None
+    for i, (a_thrust, H, path) in enumerate(SPECIALISTS):
+        spec = load13(path)
+        st, fu, rt, at = collect_states(spec, a_thrust, H, args.distill_eps,
+                                        random.fold_in(key, i))
+        obs14 = observe14(st, rt, fu, at)
+        tgt = J.policy(spec, J.observe(st, rt, fu))         # specialist's own action
+        obs_all = obs14 if obs_all is None else jnp.concatenate([obs_all, obs14])
+        tgt_all = tgt if tgt_all is None else jnp.concatenate([tgt_all, tgt])
+        print(f"  collected {path.split('/')[-1]} @ {a_thrust:.0e}: "
+              f"{obs14.shape[0]} states", flush=True)
+    # start from the padded champion (a good prior at high thrust); BC pulls the rest
+    params = load_padded(args.init)
+    wts = 1.0 + 15.0 * (tgt_all[:, 3] > 0.05).astype(jnp.float32)   # weight burn labels
+    opt = (tree_map(jnp.zeros_like, params), tree_map(jnp.zeros_like, params), jnp.array(0.0))
+    n = obs_all.shape[0]
+    for ep in range(args.bc_epochs):
+        k = random.fold_in(key, 1000 + ep)
+        perm = random.permutation(k, n)
+        for j in range(0, n, 4096):
+            idx = perm[j:j + 4096]
+            params, opt = bc_step(params, opt, obs_all[idx], tgt_all[idx], wts[idx],
+                                  jnp.float32(args.lr))
+        if (ep + 1) % max(1, args.bc_epochs // 8) == 0:
+            print(f"  bc epoch {ep+1}/{args.bc_epochs} "
+                  f"loss={float(bc_loss(params, obs_all[:8192], tgt_all[:8192], wts[:8192])):.4f}",
+                  flush=True)
+    save_npz(args.save, [(np.asarray(w), np.asarray(b)) for w, b in params])
+    print(f"saved {args.save}", flush=True)
+
+
 # --- diff-sim loss (circularize; identical shaping to jaxsim.make_loss) ----------
 def make_loss_g(H, w_orbit=4.0, w_dv=0.05, w_crash=5.0, w_shape=1.0,
                 w_well=1.0, sigma=0.15):
@@ -279,10 +391,14 @@ def train(args):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--train", action="store_true")
+    ap.add_argument("--distill", action="store_true",
+                    help="R-A3: clone the 5 E1 specialists into one conditioned net")
     ap.add_argument("--eval", action="store_true")
     ap.add_argument("--parity", action="store_true",
                     help="R-A1: padded 13->14 net at 5e-3 must ≈ the 13-input seed")
     ap.add_argument("--action-control", action="store_true")
+    ap.add_argument("--distill-eps", type=int, default=256)
+    ap.add_argument("--bc-epochs", type=int, default=40)
     ap.add_argument("--init", type=str, default="models/warm_r28_ema_final.npz")
     ap.add_argument("--save", type=str, default="models/generalist.npz")
     ap.add_argument("--episodes", type=int, default=4096)
@@ -309,6 +425,8 @@ def main():
                               jnp.asarray(np.load(args.init)[f"b{i}"])) for i in range(3)])
     if args.train:
         train(args)
+    if args.distill:
+        distill(args)
     if args.eval:
         d = np.load(args.init)
         params = [(jnp.asarray(d[f"w{i}"]), jnp.asarray(d[f"b{i}"])) for i in range(3)]
