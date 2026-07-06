@@ -145,8 +145,13 @@ correct baseline; using Hohmann everywhere would handicap the agent.
    the target-conditioning result). Residual ~11pt gap at the high-thrust
    near-impulsive cell (covariate shift, shrinking each DAgger round).
    `scripts/generalist_sim.py`.
-9. **Edelbaum spiral / full SEP LEO→GEO** — needs orbit-averaged dynamics (RK4 at
-   dt=10 s can't integrate a weeks-long spiral). Separate model; deferred.
+9. **Edelbaum spiral / full SEP LEO→GEO** — **Done (Build C):** orbit-averaged
+   dynamics built (state = V, i; yaw+throttle control; 2-D, no RK4-per-second wall).
+   A diff-sim yaw law **recovers the Edelbaum closed form**: 100% reach target,
+   median Δv/edelbaum 1.006, LEO→GEO@28.5° = 6.02 vs 5.95 km/s (ratio 1.01). A
+   correctness match (Edelbaum is the provable optimum — can only match, not beat),
+   which validates the averaged engine for regimes with no closed form (variable
+   thrust, eclipse-in-averaged, J2-coupled Ω̇). `scripts/edelbaum_sim.py`.
 10. **Efficient plane-change strategies** — plane change at apoapsis/nodes;
     apoapsis-raising to cheapen a plane change (a bi-elliptic-like idea for inclination).
 
