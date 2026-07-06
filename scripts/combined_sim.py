@@ -220,6 +220,33 @@ def expert_action_wrap(_params, state, _fuel):
     return expert_action(state)
 
 
+def evaluate(params, episodes, H, seed):
+    """Fresh-set eval of a trained policy: success + Δv vs the naive/combined
+    baselines, broken out by inclination. Separate seed from training (never the
+    in-run telemetry set). The Δv/naive < 1 across bins is the beat-the-textbook
+    number; Δv/combined ≈ 1 says it flies the true combined optimum."""
+    s0, rt = J.sample_orbits(random.PRNGKey(seed), episodes)
+    (state, fuel, dv, crash, latch), _ = rollout(_mlp_action_for(rt), params, s0, rt, H=H)
+    naive, combined, inc, _ = baseline_dv(s0)
+    dv = np.asarray(dv); latch = np.asarray(latch); crash = np.asarray(crash)
+    clean = crash == 0.0; ok = latch & clean
+    print(f"fresh eval: {episodes} episodes, seed={seed}, H={H}")
+    print(f"  success (a,e,inc<{np.degrees(INC_TOL):.0f}°) = {100*latch.mean():.1f}%"
+          f"   crash-free = {100*clean.mean():.1f}%")
+    if ok.any():
+        print(f"  median Δv           = {np.median(dv[ok]):.3f} km/s  (n={ok.sum()})")
+        print(f"  median Δv / naive    = {np.median(dv[ok]/naive[ok]):.3f}"
+              f"   (naive median {np.median(naive[ok]):.3f} km/s)")
+        print(f"  median Δv / combined = {np.median(dv[ok]/combined[ok]):.3f}"
+              f"   (combined median {np.median(combined[ok]):.3f} km/s)")
+    for lo, hi in [(0, 10), (10, 20), (20, 30), (30, 41)]:
+        m = (np.degrees(inc) >= lo) & (np.degrees(inc) < hi)
+        mo = m & ok
+        vn = np.median(dv[mo] / naive[mo]) if mo.any() else float("nan")
+        print(f"  inc [{lo:2d},{hi:2d})°: succ={100*latch[m].mean():5.1f}%"
+              f"  n={m.sum():4d}  median Δv/naive={vn:.3f}")
+
+
 def _mlp_action_for(rt):
     def act(params, state, fuel):
         return J.policy(params, observe16(state, rt, fuel))
@@ -419,6 +446,7 @@ def main():
     ap.add_argument("--validate", action="store_true")
     ap.add_argument("--dagger", action="store_true")
     ap.add_argument("--train", action="store_true")
+    ap.add_argument("--eval", action="store_true")
     ap.add_argument("--episodes", type=int, default=512)
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--horizon", type=int, default=120)
@@ -442,6 +470,8 @@ def main():
         dagger(args)
     if args.train:
         train(args)
+    if args.eval:
+        evaluate(load_npz(args.init), args.episodes, args.horizon, args.seed)
 
 
 if __name__ == "__main__":
