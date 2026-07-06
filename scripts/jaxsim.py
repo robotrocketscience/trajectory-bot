@@ -245,13 +245,16 @@ def point_rate(q, d):
     return omega * jnp.clip(MAX_RATE / n, None, 1.0)
 
 
-def sample_orbits(key, batch, frac=1.0, full_mix=0.25, rt_jitter=0.0):
+def sample_orbits(key, batch, frac=1.0, full_mix=0.25, rt_jitter=0.0,
+                  jitter_frac=1.0):
     """Start-orbit sampler. frac<1 = reverse curriculum (Florensa 1707.05300):
     shrink perigee toward the apoapsis target, r_p' = r_a - (r_a - r_p)*frac, so
     starts sit near/inside the success well where the objective has live gradient
     (frac->0 = nearly circular at target radius; frac=1 = full task, bit-exact
     legacy path). full_mix keeps that fraction of the batch at full difficulty
-    so the frontier stays connected to the real task (anti-forgetting)."""
+    so the frontier stays connected to the real task (anti-forgetting).
+    jitter_frac<1 (R33) jitters rt on only that share of episodes; the rest
+    keep rt == r_a. 1.0 = legacy full-jitter, bit-exact."""
     k = random.split(key, 7)
     def u(kk, lo, hi): return lo + (hi - lo) * random.uniform(kk, (batch,))
     r_p = R_BODY + u(k[0], *ALT_PERI)
@@ -284,6 +287,14 @@ def sample_orbits(key, batch, frac=1.0, full_mix=0.25, rt_jitter=0.0):
         # (eval sets, training draws) bit-identical when jitter is off.
         kj = random.fold_in(key, 424_242)
         rt = r_a * (1.0 + rt_jitter * (2.0 * random.uniform(kj, (batch,)) - 1.0))
+        if jitter_frac < 1.0:
+            # R33: mixed-fraction jitter — only this share of episodes gets the
+            # decoupled target; the rest keep rt == r_a so the gradient stays
+            # dominated by the mastered task. Separate fold_in constant leaves
+            # the jitter-value stream untouched: episodes that ARE jittered
+            # draw the same rt they would at jitter_frac=1.0.
+            km = random.fold_in(key, 424_243)
+            rt = jnp.where(random.uniform(km, (batch,)) < jitter_frac, rt, r_a)
     return jnp.concatenate([r_vec, v_vec, q0, w0], axis=1), rt
 
 
@@ -597,6 +608,19 @@ def main():
                          "rt = r_a * (1 +- U(0,j)). Breaks the rt==r_a degeneracy "
                          "R29 exposed (policy OOD for any commanded target != its "
                          "own apoapsis). Eval sets stay rt=r_a")
+    ap.add_argument("--jitter-warmup-iters", type=int, default=0,
+                    help="R37: linearly ramp the TRAINING rt-jitter width 0 -> "
+                         "--rt-jitter over the first N iters, then hold (0 = off, "
+                         "full width from iter 0 = R31). Keeps the distribution shift "
+                         "off the mastered specialist incremental, to avoid the "
+                         "catastrophic interference R30-R36 showed at full width. The "
+                         "eval_j (jit) gauge stays FULL width — it measures skill on "
+                         "the whole target region regardless of the training schedule.")
+    ap.add_argument("--jitter-frac", type=float, default=1.0,
+                    help="fraction of TRAINING episodes whose rt is jittered when "
+                         "--rt-jitter>0; the rest keep rt==r_a (R33: gradient stays "
+                         "dominated by the mastered task while the new region "
+                         "trains at the margin). 1.0 = legacy full-jitter")
     ap.add_argument("--curriculum", action="store_true",
                     help="reverse curriculum on start states (Florensa 1707.05300): "
                          "training batches sampled at difficulty frac (start 0.05), "
@@ -628,7 +652,8 @@ def main():
     print(f"jax devices: {jax.devices()}  H={args.horizon} K={args.chunk} "
           f"init={args.init or 'random'} budget={DV_BUDGET} absorb={ABSORB} "
           f"e_w={E_WEIGHT} w_well={args.w_well} phi_dv={PHI_DV} "
-          f"absorb_crash={ABSORB_CRASH} d_eps={D_EPS} ema={args.ema}", flush=True)
+          f"absorb_crash={ABSORB_CRASH} d_eps={D_EPS} ema={args.ema} "
+          f"rt_jitter={args.rt_jitter} jitter_warmup={args.jitter_warmup_iters} jitter_frac={args.jitter_frac}", flush=True)
     # full argv in the log: the header above echoes only some flags, and the
     # calibrated stack lives in non-defaults — R33 launch 1 was voided by a
     # silently-missing flag set. Every run log must be self-describing.
@@ -671,6 +696,8 @@ def main():
     eval_state, eval_rt = sample_orbits(random.PRNGKey(999_983), 512)
     eval_j = None
     if args.rt_jitter > 0.0:
+        # deliberately full-jitter regardless of --jitter-frac: the jit gauge
+        # measures skill on the decoupled-target region itself
         eval_j = sample_orbits(random.PRNGKey(999_991), 512, rt_jitter=args.rt_jitter)
 
     ref_mlp = act_ref = obs0 = None
@@ -782,7 +809,13 @@ def main():
     frac = 0.05 if args.curriculum else 1.0
     for it in range(args.iters):
         key, ks, kt = random.split(key, 3)
-        state, rt = sample_orbits(ks, args.batch, frac=frac, rt_jitter=args.rt_jitter)
+        # R37 curriculum: ramp jitter width 0 -> args.rt_jitter over the warmup,
+        # then hold. Off (warmup=0) -> constant full width (R31 behaviour).
+        jit_w = args.rt_jitter
+        if args.jitter_warmup_iters > 0:
+            jit_w = args.rt_jitter * min(1.0, it / args.jitter_warmup_iters)
+        state, rt = sample_orbits(ks, args.batch, frac=frac, rt_jitter=jit_w,
+                                  jitter_frac=args.jitter_frac)
         lr_t = eta_min + 0.5 * (args.lr - eta_min) * (1.0 + np.cos(np.pi * it / args.iters))
         params, opt, loss, ok, gn = train_step(params, opt, state, rt, kt, jnp.float32(lr_t))
         skipped += int(not bool(ok))
