@@ -31,6 +31,15 @@ A_THRUST = 5e-3; RATE_GAIN = 0.1; K_P = 0.5; MAX_RATE = 0.05; DV_BUDGET = 2.0
 # builds inclination about it), so the standard ECI J2 acceleration applies directly.
 J2_COEF = 0.0
 J2_EARTH = 1.08262668e-3
+# Eclipse thrust-gating (low-thrust fidelity). ECLIPSE=False => thrust_gate returns
+# all-ones and every rollout is bit-exact legacy. When True, a solar-powered
+# low-thrust craft cannot fire in Earth's shadow, so throttle is forced to 0 inside
+# a cylindrical umbra behind the planet w.r.t. SUN_DIR (a fixed inertial unit vector:
+# the Sun moves ~1°/day, negligible over a maneuver measured in hours-to-days; wiring
+# the real Sun ephemeris is a later fidelity step). This only matters at low thrust,
+# where a maneuver spans many revolutions and forced coast arcs reshape the burn plan.
+ECLIPSE = False
+SUN_DIR = np.array([1.0, 0.0, 0.0])
 # --absorb: success is absorbing in the rollout (env-style termination). Without it
 # the loss grades the FINAL state of a full 60-decision rollout, so an episode that
 # reaches tolerance mid-episode is dragged off target by exploration noise (latch
@@ -238,6 +247,23 @@ def orbit_frame(r, v):
     return t, w, cross(t, w)
 
 
+def thrust_gate(r):
+    """Multiplier on throttle for solar-powered low thrust: 1.0 in sunlight, 0.0 in
+    Earth's shadow (a craft with no sun cannot fire). ECLIPSE=False => all-ones, so
+    every substep is bit-exact legacy. Cylindrical umbra: shadowed iff the craft is on
+    the anti-sun side (r·sun < 0) AND its perpendicular distance to the Earth–Sun line
+    is under the planet radius. A hard gate (like the existing fuel gate): its boundary
+    is measure-zero, so backprop still flows through the sunlit substeps."""
+    if not ECLIPSE:
+        return jnp.ones((r.shape[0],))
+    sun = jnp.asarray(SUN_DIR, dtype=r.dtype)
+    sun = sun / snorm(sun[None, :], axis=1)[0]
+    proj = (r * sun).sum(axis=1)                       # signed distance along the sun line
+    perp = snorm(r - proj[:, None] * sun, axis=1)      # distance off the sun line
+    in_shadow = (proj < 0.0) & (perp < R_BODY)
+    return 1.0 - in_shadow.astype(jnp.float32)
+
+
 def observe(state, rt, fuel):
     a, e = elements(state)
     r = snorm(state[:, 0:3], axis=1)
@@ -326,7 +352,7 @@ def _decision_step(params, carry, rt):
         d = coeffs[:, 0:1] * t + coeffs[:, 1:2] * w + coeffs[:, 2:3] * s
         d = d / snorm(d, axis=1, keepdims=True, eps=D_EPS)
         omega_cmd = point_rate(state[:, 6:10], d)
-        gate = (fuel > 0).astype(jnp.float32)
+        gate = (fuel > 0).astype(jnp.float32) * thrust_gate(state[:, 0:3])
         thr = throttle * gate
         dv_sub = thr * A_THRUST * DT
         fuel = fuel - dv_sub; dv = dv + dv_sub
@@ -481,7 +507,8 @@ def _decision_step_stoch(mlp, log_std, carry, rt, key):
         d = coeffs[:, 0:1] * t + coeffs[:, 1:2] * w + coeffs[:, 2:3] * s
         d = d / snorm(d, axis=1, keepdims=True, eps=D_EPS)
         omega_cmd = point_rate(state[:, 6:10], d)
-        gate = (fuel > 0).astype(jnp.float32); thr = throttle * gate
+        gate = (fuel > 0).astype(jnp.float32) * thrust_gate(state[:, 0:3])
+        thr = throttle * gate
         dv_sub = thr * A_THRUST * DT
         fuel = fuel - dv_sub; dv = dv + dv_sub
         state = rk4(state, omega_cmd, thr)
@@ -562,6 +589,7 @@ def adam_step(params, grads, st, lr=3e-4, b1=0.9, b2=0.999, eps=1e-8, clip=1.0):
 
 def main():
     global DV_BUDGET, ABSORB, E_WEIGHT, PHI_DV, ABSORB_CRASH, D_EPS
+    global A_THRUST, ECLIPSE, SUN_DIR
     ap = argparse.ArgumentParser()
     ap.add_argument("--iters", type=int, default=300)
     ap.add_argument("--batch", type=int, default=256)
@@ -657,8 +685,24 @@ def main():
                          "with the raw policy's success logged as raw= for a paired "
                          "within-run control (one-step probe: success is knife-edge "
                          "sensitive to single Adam steps, so in-run evals ride jitter)")
+    ap.add_argument("--a-thrust", type=float, default=A_THRUST,
+                    help="thrust acceleration [km/s^2] (default 5e-3 = chemical, "
+                         "near-impulsive over the 200s decision). Lower it toward SEP "
+                         "levels (~1e-4) to enter the low-thrust regime where the burn "
+                         "spans many revs and gravity/turn losses appear vs the "
+                         "impulsive lower bound. Longer maneuvers need a longer --horizon.")
+    ap.add_argument("--eclipse", action="store_true",
+                    help="solar-powered low thrust: force throttle to 0 in Earth's "
+                         "cylindrical shadow (see thrust_gate). Only bites at low thrust.")
+    ap.add_argument("--sun-dir", type=float, nargs=3, default=None,
+                    metavar=("X", "Y", "Z"),
+                    help="fixed inertial Sun direction for --eclipse (default +x)")
     args = ap.parse_args()
     DV_BUDGET = args.dv_budget
+    A_THRUST = args.a_thrust
+    ECLIPSE = args.eclipse
+    if args.sun_dir is not None:
+        SUN_DIR = np.asarray(args.sun_dir, dtype=np.float64)
     ABSORB = args.absorb
     E_WEIGHT = args.e_weight
     PHI_DV = args.phi_dv
@@ -668,6 +712,7 @@ def main():
           f"init={args.init or 'random'} budget={DV_BUDGET} absorb={ABSORB} "
           f"e_w={E_WEIGHT} w_well={args.w_well} phi_dv={PHI_DV} "
           f"absorb_crash={ABSORB_CRASH} d_eps={D_EPS} ema={args.ema} "
+          f"a_thrust={A_THRUST} eclipse={ECLIPSE} sun_dir={np.asarray(SUN_DIR).tolist()} "
           f"rt_jitter={args.rt_jitter} jitter_warmup={args.jitter_warmup_iters} jitter_frac={args.jitter_frac}", flush=True)
     # full argv in the log: the header above echoes only some flags, and the
     # calibrated stack lives in non-defaults — R33 launch 1 was voided by a
