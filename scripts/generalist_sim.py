@@ -202,23 +202,31 @@ def distill(args):
     specialists when it is TAUGHT their per-thrust behaviour (vs diff-sim drifting to
     a compromise)? Mirrors the target-conditioning fix (conditioned expert -> DAgger)."""
     key = random.PRNGKey(args.seed)
-    obs_all = tgt_all = None
     # collect on CPU: the stacked-output scan (visited states -> (H,B,13)) trips the
     # intermittent XLA GPU lowering bug (scf.if shape mismatch); combined_sim's DAgger
     # hits the same one. BC + eval below stay on GPU.
     cpu = jax.devices("cpu")[0]
+    per_obs, per_tgt = [], []
     for i, (a_thrust, H, path) in enumerate(SPECIALISTS):
         spec = tree_map(lambda x: jax.device_put(x, cpu), load13(path))
         with jax.default_device(cpu):
             st, fu, rt, at = collect_states(spec, a_thrust, H, args.distill_eps,
                                             random.fold_in(key, i))
         st, fu, rt, at = (jax.device_put(x) for x in (st, fu, rt, at))  # -> default (GPU)
-        obs14 = observe14(st, rt, fu, at)
-        tgt = J.policy(spec, J.observe(st, rt, fu))         # specialist's own action
-        obs_all = obs14 if obs_all is None else jnp.concatenate([obs_all, obs14])
-        tgt_all = tgt if tgt_all is None else jnp.concatenate([tgt_all, tgt])
+        per_obs.append(observe14(st, rt, fu, at))
+        per_tgt.append(J.policy(spec, J.observe(st, rt, fu)))   # specialist's own action
         print(f"  collected {path.split('/')[-1]} @ {a_thrust:.0e}: "
-              f"{obs14.shape[0]} states", flush=True)
+              f"{per_obs[-1].shape[0]} states", flush=True)
+    # BALANCE: low thrust yields ~4x more states per episode (H=480 vs 120), which
+    # would swamp BC toward the low-thrust regime (R-A3a: 5e-3 cratered to 53%).
+    # Subsample every thrust to the smallest cell's count so each regime is equal.
+    n_min = min(o.shape[0] for o in per_obs)
+    obs_all = tgt_all = None
+    for i, (o, t) in enumerate(zip(per_obs, per_tgt)):
+        idx = random.permutation(random.fold_in(key, 900 + i), o.shape[0])[:n_min]
+        obs_all = o[idx] if obs_all is None else jnp.concatenate([obs_all, o[idx]])
+        tgt_all = t[idx] if tgt_all is None else jnp.concatenate([tgt_all, t[idx]])
+    print(f"  balanced to {n_min} states/thrust ({obs_all.shape[0]} total)", flush=True)
     # start from the padded champion (a good prior at high thrust); BC pulls the rest
     params = load_padded(args.init)
     wts = 1.0 + 15.0 * (tgt_all[:, 3] > 0.05).astype(jnp.float32)   # weight burn labels
@@ -232,8 +240,9 @@ def distill(args):
             params, opt = bc_step(params, opt, obs_all[idx], tgt_all[idx], wts[idx],
                                   jnp.float32(args.lr))
         if (ep + 1) % max(1, args.bc_epochs // 8) == 0:
+            si = random.permutation(random.fold_in(key, 5000 + ep), n)[:8192]  # random subset
             print(f"  bc epoch {ep+1}/{args.bc_epochs} "
-                  f"loss={float(bc_loss(params, obs_all[:8192], tgt_all[:8192], wts[:8192])):.4f}",
+                  f"loss={float(bc_loss(params, obs_all[si], tgt_all[si], wts[si])):.4f}",
                   flush=True)
     save_npz(args.save, [(np.asarray(w), np.asarray(b)) for w, b in params])
     print(f"saved {args.save}", flush=True)
