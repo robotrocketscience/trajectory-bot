@@ -16,7 +16,10 @@ Config mirrors eval_probe (ABSORB, PHI_DV, D_EPS=1e-4, budget 2.0) so numbers ar
 comparable to the high-thrust scoreboard.
 
     uv run --with "jax[cuda12]" python scripts/lowthrust_eval.py CKPT [CKPT ...]
+    # single operating point, eclipse ON (E2):
+    uv run ... lowthrust_eval.py --a-thrust 5e-4 --horizon 300 --eclipse CKPT
 """
+import argparse
 import sys
 
 sys.path.insert(0, "scripts")
@@ -51,17 +54,29 @@ def load(path):
 
 
 def main():
-    ckpts = sys.argv[1:]
-    if not ckpts:
-        print("usage: lowthrust_eval.py CKPT [CKPT ...]")
-        return
+    ap = argparse.ArgumentParser()
+    ap.add_argument("ckpts", nargs="+")
+    ap.add_argument("--eclipse", action="store_true",
+                    help="eval with Earth-shadow thrust-gating ON (E2)")
+    ap.add_argument("--sun-dir", type=float, nargs=3, default=None)
+    ap.add_argument("--a-thrust", type=float, default=None,
+                    help="single-cell: eval only this thrust (needs --horizon)")
+    ap.add_argument("--horizon", type=int, default=None)
+    args = ap.parse_args()
+
+    J.ECLIPSE = args.eclipse
+    if args.sun_dir is not None:
+        J.SUN_DIR = np.asarray(args.sun_dir, dtype=np.float64)
+    cells = ([(args.a_thrust, args.horizon)]
+             if args.a_thrust is not None else GRID)
+
     state, rt = EVAL_SET
-    for path in ckpts:
+    for path in args.ckpts:
         params = load(path)
-        print(f"\n=== {path}  (fresh4096) ===")
+        print(f"\n=== {path}  (fresh4096, eclipse={args.eclipse}) ===")
         print(f"{'a_thrust':>10} {'H':>4} {'success':>8} {'dv':>7} "
               f"{'a_err':>6} {'e':>6} {'crash':>6} {'dvr':>6}")
-        for a_thrust, h in GRID:
+        for a_thrust, h in cells:
             J.A_THRUST = a_thrust    # set BEFORE tracing: A_THRUST bakes into the graph,
             diag = jax.jit(J.make_diag(h))   # so jit fresh per cell (no stale-thrust reuse)
             s, dvu, ae, e, cr, dvr = (float(x) for x in diag(params, state, rt))
