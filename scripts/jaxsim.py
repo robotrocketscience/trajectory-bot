@@ -706,6 +706,12 @@ def main():
     ap.add_argument("--sun-dir", type=float, nargs=3, default=None,
                     metavar=("X", "Y", "Z"),
                     help="fixed inertial Sun direction for --eclipse (default +x)")
+    ap.add_argument("--eval-cpu", action="store_true",
+                    help="compile the in-run diag eval on the CPU backend (training "
+                         "stays on GPU). Workaround for an intermittent XLA GPU "
+                         "lowering bug (scf.if shape mismatch) that the --eclipse eval "
+                         "graph trips at batch 512; same fix combined_sim uses for "
+                         "its DAgger eval.")
     args = ap.parse_args()
     DV_BUDGET = args.dv_budget
     A_THRUST = args.a_thrust
@@ -738,6 +744,7 @@ def main():
                     (jnp.asarray(d["w2"]), jnp.asarray(d["b2"]))]
 
     base_diag = make_diag(args.eval_horizon)
+    eval_backend = "cpu" if args.eval_cpu else None   # None = default (GPU when present)
     if args.explore:
         mlp = mlp_init if mlp_init is not None else init_params(kp, args.final_init_scale)
         ls0 = np.full(4, args.init_log_std, dtype=np.float32)
@@ -747,7 +754,7 @@ def main():
         loss_fn = make_loss_stoch(args.horizon, K=max(1, args.chunk), beta=args.entropy,
                                   w_dv=args.w_dv, w_crash=args.w_crash, w_shape=args.w_orbit,
                                   w_well=args.w_well)
-        diag_fn = jit(lambda p, s, rt: base_diag(p[0], s, rt))   # deterministic mean
+        diag_fn = jit(lambda p, s, rt: base_diag(p[0], s, rt), backend=eval_backend)   # deterministic mean
     else:
         params = mlp_init if mlp_init is not None else init_params(kp, args.final_init_scale)
         if args.chunk and args.chunk < args.horizon:
@@ -757,7 +764,7 @@ def main():
             det = make_loss(args.horizon, w_orbit=args.w_orbit, w_dv=args.w_dv,
                             w_crash=args.w_crash)
         loss_fn = lambda p, s, rt, _key: det(p, s, rt)          # ignore key
-        diag_fn = jit(base_diag)
+        diag_fn = jit(base_diag, backend=eval_backend)
     opt = adam_init(params)
     vg = jit(value_and_grad(loss_fn))
 
