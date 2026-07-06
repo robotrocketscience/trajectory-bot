@@ -158,8 +158,14 @@ correct baseline; using Hohmann everywhere would handicap the agent.
    correctness match (Edelbaum is the provable optimum — can only match, not beat),
    which validates the averaged engine for regimes with no closed form (variable
    thrust, eclipse-in-averaged, J2-coupled Ω̇). `scripts/edelbaum_sim.py`.
-10. **Efficient plane-change strategies** — plane change at apoapsis/nodes;
-    apoapsis-raising to cheapen a plane change (a bi-elliptic-like idea for inclination).
+10. **Efficient plane-change strategies** — **Done (Build E):** in the averaged
+    model, a diff-sim yaw law **rediscovers raise-to-plane-change** for a pure plane
+    change — it raises altitude ~10% (median), ~20% for large Δi, turns the plane
+    cheaply where V is small, and returns, matching the Edelbaum optimum (0.997) and
+    beating the naive constant-altitude law by ~4% (median) to ~7% (Δi>35°). The
+    continuous analog of the bi-elliptic-inclination trick, from raw Δv minimization.
+    Needed FULL yaw β∈[-π,π] (edelbaum_sim's ±π/2 forbids the return leg — a control
+    parameterization hiding a whole strategy class). `scripts/planechange_sim.py`.
 
 ### Tier 3 — multi-body (original goal; Hohmann not optimal)
 11. **Earth–Moon transfer + capture.** Baselines: patched-conic Hohmann-like transfer
