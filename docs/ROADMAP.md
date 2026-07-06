@@ -128,10 +128,15 @@ correct baseline; using Hohmann everywhere would handicap the agent.
    bound. **Done (E1):** `dvr` rises 1.20→1.38 over a 25× thrust drop; no RK4
    horizon wall in the 5e-3→2e-4 band. Eclipse thrust-gate added and tested — no
    gift on circularize (E2 null; needs burn-location freedom). See Current status.
-7. **Low-thrust multi-rev transfer** (altitude raise / plane change) — the vehicle
-   E2 pointed to: many candidate burn arcs, so eclipse-avoidance is a real degree
-   of freedom, and gravity/turn losses vs **Edelbaum** are the yardstick. This is
-   where the beat-Edelbaum gift can actually appear. *(Next.)*
+7. **Low-thrust multi-rev transfer** (altitude raise). **Done (Build B):** diff-sim
+   learns the circular r1→r2 spiral at **67.6% success, Δv/edelbaum 1.08** (near the
+   coplanar low-thrust bound). The eclipse-gift test **refuted H-B2**: the
+   eclipse-aware policy does NOT avoid the umbra (shadow 37% ≈ blind 38%) —
+   **cancelled-in-shadow thrust costs no fuel, so there is no Δv incentive to dodge
+   shadow**, only a thrust-time cost. What the transfer's burn-location freedom DOES
+   buy is *robustness*: it recovers success under eclipse (46→74%) where the pinned
+   circularize couldn't (E2: 68→69%). A real shadow-avoidance skill needs a binding
+   cost (deadline / mass penalty). `scripts/transfer_sim.py`.
 8. **Thrust-conditioned generalist** — `A_THRUST` in the observation, one policy
    across the thrust band. **Done (Build A):** ONE 14-input net recovers ~97% of the
    five E1 specialists' band-wide success (82.1% mean vs 84.3%), matching within
