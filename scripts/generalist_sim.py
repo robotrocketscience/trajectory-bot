@@ -238,11 +238,23 @@ def train(args):
     opt = (tree_map(jnp.zeros_like, params), tree_map(jnp.zeros_like, params), jnp.array(0.0))
     ema_p = params; tau = args.ema
     key = random.PRNGKey(args.seed)
-    # fixed multi-thrust probe (one eval batch; thrust sampled like training)
-    ps, prt = J.sample_orbits(random.PRNGKey(999_983), 512)
-    pth = sample_thrust(random.PRNGKey(123), 512)
-    diag = jax.jit(make_diag_g(args.horizon))
-    best = None; best_s = -1.0
+    # DIAGONAL probe: success at each E1 thrust cell (the quantity H-A is about), so
+    # best-save tracks band-wide skill, not a mixed batch biased toward the easy end.
+    # a_thrust is a runtime arg to make_diag_g (not baked), so one jit per horizon is
+    # reused across cells that share H (5e-3 & 2e-3 both H=120) — correct, unlike a
+    # baked global.
+    probe_orbits = {h: J.sample_orbits(random.PRNGKey(999_983), 512) for _, h in EVAL_THRUSTS}
+    probe_diag = {h: jax.jit(make_diag_g(h)) for _, h in EVAL_THRUSTS}
+
+    def diagonal(p):
+        out = []
+        for a_thrust, h in EVAL_THRUSTS:
+            s0p, rtp = probe_orbits[h]
+            atp = jnp.full((s0p.shape[0],), a_thrust)
+            out.append(float(probe_diag[h](p, s0p, rtp, atp)[0]))
+        return out
+
+    best = None; best_m = -1.0
     for it in range(args.iters):
         k1, k2 = random.split(random.fold_in(key, it))
         s0, rt = J.sample_orbits(k1, args.batch)
@@ -251,14 +263,17 @@ def train(args):
         params, opt, l, gmax = train_step(params, opt, s0, rt, at, jnp.float32(lr))
         ema_p = tree_map(lambda a, b: tau * a + (1 - tau) * b, ema_p, params)
         if (it + 1) % args.eval_every == 0 or it == 0:
-            s, dvu, ae, e, cr, dvr = (float(x) for x in diag(ema_p, ps, prt, pth))
+            succ = diagonal(ema_p)
+            m = sum(succ) / len(succ)
             star = ""
-            if s > best_s:
-                best_s = s; best = tree_map(np.asarray, ema_p); star = " *"
-            print(f"it={it:4d} loss={float(l):+.3f} gmax={float(gmax):.1e} "
-                  f"probe_succ={100*s:.1f}% dvr={dvr:.3f}{star}", flush=True)
+            if m > best_m:
+                best_m = m; best = tree_map(np.asarray, ema_p); star = " *"
+            cells = " ".join(f"{100*s:.0f}" for s in succ)
+            print(f"it={it:4d} loss={float(l):+.3f} diag_mean={100*m:.1f}% "
+                  f"[{cells}]{star}", flush=True)
     save_npz(args.save, best)
-    print(f"saved {args.save} (best probe succ={100*best_s:.1f}%)", flush=True)
+    save_npz(args.save.replace(".npz", "_final.npz"), tree_map(np.asarray, ema_p))
+    print(f"saved {args.save} (best diag_mean={100*best_m:.1f}%)", flush=True)
 
 
 def main():
