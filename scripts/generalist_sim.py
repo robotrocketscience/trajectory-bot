@@ -177,6 +177,47 @@ def collect_states(spec13, a_thrust, H, episodes, key):
             rt_seq.reshape(-1), jnp.full((H * episodes,), a_thrust))
 
 
+def collect_generalist(gen, a_thrust, H, episodes, key):
+    """Roll the 14-input GENERALIST at one thrust; return its visited (state,fuel,rt).
+    DAgger: relabel these on-policy states with the specialist to fix covariate shift.
+    Same structure as collect_states but driven by observe14 + the generalist."""
+    s0, rt = J.sample_orbits(key, episodes)
+    at = jnp.full((episodes,), a_thrust)
+    B = episodes
+    carry = (s0, jnp.full((B,), J.DV_BUDGET), jnp.zeros((B,)),
+             jnp.zeros((B,)), jnp.zeros((B,), bool))
+
+    def decision(c, _):
+        st, fu = c[0], c[1]
+        act = J.policy(gen, observe14(st, rt, jnp.clip(fu, 0.0, None), at))   # 14-in
+        coeffs = act[:, 0:3]; throttle = jnp.clip(act[:, 3], 0.0, 1.0)
+
+        def sub(c2, _):
+            s2, f2, d2, cr2 = c2
+            t, w, s = J.orbit_frame(s2[:, 0:3], s2[:, 3:6])
+            d = coeffs[:, 0:1] * t + coeffs[:, 1:2] * w + coeffs[:, 2:3] * s
+            d = d / J.snorm(d, axis=1, keepdims=True, eps=J.D_EPS)
+            omega = J.point_rate(s2[:, 6:10], d)
+            thr = throttle * (f2 > 0).astype(jnp.float32) * J.thrust_gate(s2[:, 0:3])
+            dsub = thr * a_thrust * J.DT
+            f2 = f2 - dsub; d2 = d2 + dsub
+            s2 = rk4_g(s2, omega, thr, a_thrust)
+            cr2 = cr2 + jnp.clip((J.R_BODY - J.snorm(s2[:, 0:3], axis=1)) / J.R_BODY, 0.0, None) ** 2
+            return (s2, f2, d2, cr2), None
+
+        (st2, fu2, dv2, cr2), _ = lax.scan(sub, (c[0], c[1], c[2], c[3]),
+                                           None, length=J.REPEAT)
+        latch = c[4] | ((lambda ae, e: (ae < J.A_TOL) & (e < J.E_TOL))(*J.a_err_e(st2, rt)))
+        dead = c[4]
+        st2 = jnp.where(dead[:, None], c[0], st2)
+        fu2 = jnp.where(dead, c[1], fu2)
+        return (st2, fu2, dv2, cr2, latch), (st, fu, rt)
+
+    _, (st_seq, fu_seq, rt_seq) = lax.scan(decision, carry, None, length=H)
+    return (st_seq.reshape(-1, st_seq.shape[-1]), fu_seq.reshape(-1),
+            rt_seq.reshape(-1), jnp.full((H * episodes,), a_thrust))
+
+
 def bc_loss(params, obs, tgt, wts):
     per = ((J.policy(params, obs) - tgt) ** 2).mean(axis=1)
     return (wts * per).sum() / jnp.maximum(wts.sum(), 1.0)
@@ -204,48 +245,58 @@ def distill(args):
     key = random.PRNGKey(args.seed)
     # collect on CPU: the stacked-output scan (visited states -> (H,B,13)) trips the
     # intermittent XLA GPU lowering bug (scf.if shape mismatch); combined_sim's DAgger
-    # hits the same one. BC + eval below stay on GPU.
+    # hits the same one. BC + eval stay on GPU.
     cpu = jax.devices("cpu")[0]
-    per_obs, per_tgt = [], []
-    for i, (a_thrust, H, path) in enumerate(SPECIALISTS):
-        spec = tree_map(lambda x: jax.device_put(x, cpu), load13(path))
-        with jax.default_device(cpu):
-            st, fu, rt, at = collect_states(spec, a_thrust, H, args.distill_eps,
-                                            random.fold_in(key, i))
-        st, fu, rt, at = (jax.device_put(x) for x in (st, fu, rt, at))  # -> default (GPU)
-        per_obs.append(observe14(st, rt, fu, at))
-        per_tgt.append(J.policy(spec, J.observe(st, rt, fu)))   # specialist's own action
-        print(f"  collected {path.split('/')[-1]} @ {a_thrust:.0e}: "
-              f"{per_obs[-1].shape[0]} states", flush=True)
-    # BALANCE: low thrust yields ~4x more states per episode (H=480 vs 120), which
-    # would swamp BC toward the low-thrust regime (R-A3a: 5e-3 cratered to 53%).
-    # Subsample every thrust to the smallest cell's count so each regime is equal.
-    n_min = min(o.shape[0] for o in per_obs)
+    specs = [(a, H, path, tree_map(lambda x: jax.device_put(x, cpu), load13(path)))
+             for a, H, path in SPECIALISTS]
+    params = load_padded(args.init)      # padded champion: good prior at high thrust
     obs_all = tgt_all = None
-    for i, (o, t) in enumerate(zip(per_obs, per_tgt)):
-        idx = random.permutation(random.fold_in(key, 900 + i), o.shape[0])[:n_min]
-        obs_all = o[idx] if obs_all is None else jnp.concatenate([obs_all, o[idx]])
-        tgt_all = t[idx] if tgt_all is None else jnp.concatenate([tgt_all, t[idx]])
-    print(f"  balanced to {n_min} states/thrust ({obs_all.shape[0]} total)", flush=True)
-    # start from the padded champion (a good prior at high thrust); BC pulls the rest
-    params = load_padded(args.init)
+    for dag in range(args.dagger_iters + 1):
+        gen_cpu = tree_map(lambda x: jax.device_put(x, cpu), params) if dag > 0 else None
+        per_obs, per_tgt = [], []
+        for i, (a_thrust, H, path, spec) in enumerate(specs):
+            with jax.default_device(cpu):
+                if dag == 0:               # iter 0: roll the specialist itself
+                    st, fu, rt, at = collect_states(spec, a_thrust, H,
+                                                    args.distill_eps, random.fold_in(key, 100 * dag + i))
+                else:                      # DAgger: roll the GENERALIST (on-policy states)
+                    st, fu, rt, at = collect_generalist(gen_cpu, a_thrust, H,
+                                                        args.distill_eps, random.fold_in(key, 100 * dag + i))
+                tgt = J.policy(spec, J.observe(st, rt, jnp.clip(fu, 0.0, None)))  # specialist relabel
+                o14 = observe14(st, rt, fu, at)
+            per_obs.append(jax.device_put(o14)); per_tgt.append(jax.device_put(tgt))
+        # BALANCE: low thrust yields ~4x more states/episode (H=480 vs 120) → swamps BC
+        # toward the low-thrust regime (R-A3a cratered 5e-3 to 53%). Equalize per thrust.
+        n_min = min(o.shape[0] for o in per_obs)
+        for i, (o, t) in enumerate(zip(per_obs, per_tgt)):
+            idx = random.permutation(random.fold_in(key, 900 + 10 * dag + i), o.shape[0])[:n_min]
+            obs_all = o[idx] if obs_all is None else jnp.concatenate([obs_all, o[idx]])
+            tgt_all = t[idx] if tgt_all is None else jnp.concatenate([tgt_all, t[idx]])
+        print(f"  dagger {dag}: +{5*n_min} states/{'specialist' if dag==0 else 'on-policy'} "
+              f"rollout (aggregate {obs_all.shape[0]})", flush=True)
+        # refit from the padded init on ALL aggregated data (DAgger aggregation)
+        params = bc_fit_full(load_padded(args.init), obs_all, tgt_all, args.bc_epochs,
+                             args.lr, random.fold_in(key, dag))
+    save_npz(args.save, [(np.asarray(w), np.asarray(b)) for w, b in params])
+    print(f"saved {args.save}", flush=True)
+
+
+def bc_fit_full(params, obs_all, tgt_all, epochs, lr, key):
     wts = 1.0 + 15.0 * (tgt_all[:, 3] > 0.05).astype(jnp.float32)   # weight burn labels
     opt = (tree_map(jnp.zeros_like, params), tree_map(jnp.zeros_like, params), jnp.array(0.0))
     n = obs_all.shape[0]
-    for ep in range(args.bc_epochs):
-        k = random.fold_in(key, 1000 + ep)
-        perm = random.permutation(k, n)
+    for ep in range(epochs):
+        perm = random.permutation(random.fold_in(key, 1000 + ep), n)
         for j in range(0, n, 4096):
             idx = perm[j:j + 4096]
             params, opt = bc_step(params, opt, obs_all[idx], tgt_all[idx], wts[idx],
-                                  jnp.float32(args.lr))
-        if (ep + 1) % max(1, args.bc_epochs // 8) == 0:
-            si = random.permutation(random.fold_in(key, 5000 + ep), n)[:8192]  # random subset
-            print(f"  bc epoch {ep+1}/{args.bc_epochs} "
+                                  jnp.float32(lr))
+        if (ep + 1) % max(1, epochs // 4) == 0:
+            si = random.permutation(random.fold_in(key, 5000 + ep), n)[:8192]
+            print(f"    bc epoch {ep+1}/{epochs} "
                   f"loss={float(bc_loss(params, obs_all[si], tgt_all[si], wts[si])):.4f}",
                   flush=True)
-    save_npz(args.save, [(np.asarray(w), np.asarray(b)) for w, b in params])
-    print(f"saved {args.save}", flush=True)
+    return params
 
 
 # --- diff-sim loss (circularize; identical shaping to jaxsim.make_loss) ----------
@@ -414,6 +465,10 @@ def main():
     ap.add_argument("--action-control", action="store_true")
     ap.add_argument("--distill-eps", type=int, default=256)
     ap.add_argument("--bc-epochs", type=int, default=40)
+    ap.add_argument("--dagger-iters", type=int, default=0,
+                    help="R-A3c: DAgger rounds after the initial BC (roll the "
+                         "generalist, relabel with the specialist) to fix covariate "
+                         "shift, worst at the timing-sensitive high-thrust cell")
     ap.add_argument("--init", type=str, default="models/warm_r28_ema_final.npz")
     ap.add_argument("--save", type=str, default="models/generalist.npz")
     ap.add_argument("--episodes", type=int, default=4096)
