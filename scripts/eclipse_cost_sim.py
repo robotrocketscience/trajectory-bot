@@ -137,7 +137,7 @@ def train(args):
         losses = jnp.where(jnp.isfinite(losses), losses, 0.0)
         norms = jnp.sqrt(sum(jnp.sum(g.reshape(g.shape[0], -1) ** 2, axis=1)
                              for g in jax.tree_util.tree_leaves(grads)))
-        cutoff = jnp.sort(norms)[B - args.trim_ep - 1]
+        cutoff = jnp.sort(norms)[max(B - args.trim_ep - 1, 0)]   # guard trim_ep >= batch
         scale = (norms <= cutoff).astype(jnp.float32)
         scale = scale * jnp.minimum(1.0, args.clip_ep / jnp.maximum(norms, 1e-12))
         kept = jnp.maximum(jnp.sum((scale > 0).astype(jnp.float32)), 1.0)
