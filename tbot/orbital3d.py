@@ -13,7 +13,13 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
-from .orbital import MU_EARTH, speed_circular
+from .orbital import (
+    MU_EARTH,
+    circularize_apoapsis_dv,
+    hohmann_dv,
+    speed_circular,
+    vis_viva,
+)
 
 Vec = npt.NDArray[np.float64]
 
@@ -71,6 +77,123 @@ def plane_change_dv(v: float, delta_i: float) -> float:
     plane changes are done at apoapsis / combined with a transfer's apogee burn.
     """
     return 2.0 * v * abs(np.sin(delta_i / 2.0))
+
+
+def combined_circularize_plane_dv(
+    r_p: float, r_a: float, delta_i: float, mu: float = MU_EARTH,
+) -> dict[str, float]:
+    """Δv [km/s] baselines for a single-burn combined circularize + plane change.
+
+    An inclined ellipse ``(r_p, r_a)`` at inclination ``delta_i`` [rad] →
+    circular *and equatorial* at ``r_a``, in one apoapsis burn. The single-burn
+    analogue of :func:`combined_plane_altitude_dv`; both yardsticks last:
+
+    - ``naive``: circularize at apoapsis (prograde) and then do a *separate*
+      plane change at the resulting circular speed — the from-the-textbook
+      decomposition, the number the agent is expected to beat.
+    - ``combined``: one vector burn at apoapsis that both circularizes and
+      removes the inclination. By the triangle inequality this can never cost
+      more than ``naive`` (the direct velocity change ≤ any two-leg route), so
+      the margin is guaranteed and grows with ``delta_i``.
+
+    Both collapse to :func:`~tbot.orbital.circularize_apoapsis_dv` at
+    ``delta_i = 0``. Over-raising apoapsis to cheapen the plane change
+    (a bi-elliptic-with-plane-change idea) can beat ``combined`` — a policy that
+    does so is genuine discovery, not bookkeeping.
+    """
+    a_ell = 0.5 * (r_p + r_a)
+    v_apo = vis_viva(r_a, a_ell, mu)          # elliptical apoapsis speed (inclined)
+    v_circ = speed_circular(r_a, mu)          # target circular speed (equatorial)
+    naive = abs(v_circ - v_apo) + 2.0 * v_circ * abs(np.sin(delta_i / 2.0))
+    combined = float(
+        np.sqrt(v_apo * v_apo + v_circ * v_circ
+                - 2.0 * v_apo * v_circ * np.cos(delta_i)))
+    return {
+        "naive": naive,
+        "combined": combined,
+        "circularize": circularize_apoapsis_dv(r_p, r_a, mu),
+        "plane_change_at_r_a": 2.0 * v_circ * abs(np.sin(delta_i / 2.0)),
+    }
+
+
+def combined_plane_altitude_dv(
+    r1: float, r2: float, delta_i: float, mu: float = MU_EARTH,
+) -> dict[str, float]:
+    """Δv [km/s] baselines for a combined altitude-raise + plane-change transfer.
+
+    Circular ``r1`` (inclined ``delta_i`` [rad]) → circular ``r2`` (equatorial),
+    via a Hohmann transfer ellipse. Three yardsticks the diff-sim agent is judged
+    against, cheapest strategy last:
+
+    - ``naive``: a competent-but-naive practitioner — Hohmann in-plane, then a
+      *separate* plane change at ``r2`` where the circular speed is lowest.
+      This is the number a from-the-textbook decomposition gives, and the one
+      the agent is expected to *beat*.
+    - ``combined_apogee``: fold the whole plane change into the apogee
+      circularization burn (vector Δv, not scalar sum). The standard textbook
+      "combined maneuver" — cheaper because it never pays the plane change and
+      the speed change separately.
+    - ``split_optimal``: the true two-impulse optimum — split the plane change
+      between the perigee and apogee burns (a small fraction at perigee), found
+      by golden-section on the split. Beats ``combined_apogee`` slightly.
+
+    All three share the same Hohmann transfer ellipse (a = (r1+r2)/2). Valid for
+    ``r2/r1 < 11.94`` where the in-plane optimum is genuinely Hohmann (above that,
+    a bi-elliptic base would beat it and this baseline understates the optimum).
+
+    Note the split optimum still fixes the transfer apoapsis at ``r2``;
+    over-raising apoapsis bi-elliptic-style can cheapen the plane change further,
+    so a policy beating ``split_optimal`` is genuine discovery, not a bookkeeping
+    artifact.
+    """
+    a_t = 0.5 * (r1 + r2)
+    v1 = speed_circular(r1, mu)          # circular speed at r1 (in inclined plane)
+    v2 = speed_circular(r2, mu)          # circular speed at r2 (equatorial target)
+    v_peri = vis_viva(r1, a_t, mu)       # transfer-ellipse speed at perigee
+    v_apo = vis_viva(r2, a_t, mu)        # transfer-ellipse speed at apogee
+
+    hoh = hohmann_dv(r1, r2, mu)
+    naive = hoh["total"] + 2.0 * v2 * abs(np.sin(delta_i / 2.0))
+
+    def combined(va: float, vb: float, di: float) -> float:
+        # magnitude of the vector Δv that changes speed va→vb and rotates by di
+        return float(np.sqrt(va * va + vb * vb - 2.0 * va * vb * np.cos(di)))
+
+    dv1_in = abs(v_peri - v1)                     # in-plane perigee raise
+    combined_apogee = dv1_in + combined(v_apo, v2, delta_i)
+
+    def split_total(frac: float) -> float:
+        # frac of the plane change absorbed at perigee, the rest at apogee
+        dv1 = combined(v1, v_peri, frac * delta_i)
+        dv2 = combined(v_apo, v2, (1.0 - frac) * delta_i)
+        return dv1 + dv2
+
+    # golden-section minimize split_total over frac ∈ [0, 1]
+    gr = 0.5 * (np.sqrt(5.0) - 1.0)
+    lo, hi = 0.0, 1.0
+    c = hi - gr * (hi - lo)
+    d = lo + gr * (hi - lo)
+    fc, fd = split_total(c), split_total(d)
+    for _ in range(60):
+        if fc < fd:
+            hi, d, fd = d, c, fc
+            c = hi - gr * (hi - lo)
+            fc = split_total(c)
+        else:
+            lo, c, fc = c, d, fd
+            d = lo + gr * (hi - lo)
+            fd = split_total(d)
+    split_frac = 0.5 * (lo + hi)
+    split_optimal = split_total(split_frac)
+
+    return {
+        "naive": naive,
+        "combined_apogee": combined_apogee,
+        "split_optimal": split_optimal,
+        "split_frac": split_frac,
+        "hohmann_total": hoh["total"],
+        "plane_change_at_r2": 2.0 * v2 * abs(np.sin(delta_i / 2.0)),
+    }
 
 
 def edelbaum_dv(r0: float, rf: float, delta_i: float, mu: float = MU_EARTH) -> float:
