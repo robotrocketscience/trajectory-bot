@@ -203,10 +203,16 @@ def distill(args):
     a compromise)? Mirrors the target-conditioning fix (conditioned expert -> DAgger)."""
     key = random.PRNGKey(args.seed)
     obs_all = tgt_all = None
+    # collect on CPU: the stacked-output scan (visited states -> (H,B,13)) trips the
+    # intermittent XLA GPU lowering bug (scf.if shape mismatch); combined_sim's DAgger
+    # hits the same one. BC + eval below stay on GPU.
+    cpu = jax.devices("cpu")[0]
     for i, (a_thrust, H, path) in enumerate(SPECIALISTS):
-        spec = load13(path)
-        st, fu, rt, at = collect_states(spec, a_thrust, H, args.distill_eps,
-                                        random.fold_in(key, i))
+        spec = tree_map(lambda x: jax.device_put(x, cpu), load13(path))
+        with jax.default_device(cpu):
+            st, fu, rt, at = collect_states(spec, a_thrust, H, args.distill_eps,
+                                            random.fold_in(key, i))
+        st, fu, rt, at = (jax.device_put(x) for x in (st, fu, rt, at))  # -> default (GPU)
         obs14 = observe14(st, rt, fu, at)
         tgt = J.policy(spec, J.observe(st, rt, fu))         # specialist's own action
         obs_all = obs14 if obs_all is None else jnp.concatenate([obs_all, obs14])
