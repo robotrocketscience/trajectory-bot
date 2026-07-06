@@ -1,6 +1,6 @@
 # Roadmap — maneuvers, missions, and the optimality question
 
-## Current status (2026-07-05)
+## Current status (2026-07-06)
 
 - **2D circularize:** solved — diff-sim policy gradient ~76–80%, Δv ~1.24× optimal
   (Milestone 1, merged).
@@ -25,10 +25,29 @@
   built and verified on a research branch (4.6e-7 vs RK4 at the decision interval);
   reserved for Tier-3 long two-body coast arcs (mixed coast/burn batches block a clean
   training-loop integration).
-- **Beat-the-textbook (the optimality question below):** still open. The agent *matches*
-  the analytic transfer's fuel; the tolerance box quantifies ~15% of headroom, and the
-  verification harness (`verify_probe.py`, float64/dt=1 s) exists so any future
-  sub-baseline claim survives scrutiny.
+- **Combined circularize + plane-change (beat-the-naive-textbook):** **first learned
+  discovery result.** An inclined ellipse → circular *and equatorial* at apoapsis in one
+  combined burn. A diff-sim policy optimizing raw Δv reaches **84%** on a fresh
+  4096-episode set at **median Δv 0.75× the naive** circularize-then-separate-plane-change
+  — matching the analytic combined optimum (Δv/combined ≈ 1.05), i.e. the agent *discovers*
+  folding the plane change into the burn. Baselines `combined_circularize_plane_dv` /
+  `combined_plane_altitude_dv` in `tbot.orbital3d`; env/expert/refinement in
+  `scripts/combined_sim.py`.
+- **Edelbaum low-thrust baseline:** the analytic low-thrust combined altitude+plane Δv
+  is in (`orbital3d.edelbaum_dv`), verified to the LEO→GEO literature anchors — the
+  yardstick for the low-thrust tier.
+- **J2 oblateness:** first environmental-fidelity term, in `jaxsim.deriv` (flag-gated,
+  two-body bit-exact when off), verified by its −4.78°/day nodal regression.
+- **Lambert solver + guidance/control study:** a differentiable universal-variable
+  Lambert solver (`scripts/lambert.py`), used to measure the finite-thrust execution
+  loss of an impulsive plan — small at high thrust-to-weight, growing as ~1/thrust, so
+  a direct per-step diff-sim policy earns its keep in the **low-thrust** regime, not the
+  high-thrust transfer. Motivates the low-thrust-vs-Edelbaum experiment next.
+- **Beat-the-textbook (the deeper optimality question below):** partially answered. On
+  the *impulsive* single-body case the agent *matches* the analytic optimum (tolerance
+  box ~15% headroom; `verify_probe.py` float64/dt=1 s guards any sub-baseline claim), and
+  it now *beats the naive decomposition* on the combined maneuver. The genuinely open
+  frontier is low-thrust (vs Edelbaum) and multi-body (Tier-3).
 
 ## Guiding principle: optimize the true objective, don't imitate the textbook
 
@@ -144,13 +163,20 @@ Two ways to build mission-level behavior:
 
 ## Baselines to implement (so each regime is judged correctly)
 - [x] Hohmann, bi-elliptic, apoapsis-circularize (2-D, done).
-- [ ] Pure plane change `2·v·sin(Δi/2)`; combined plane-change+altitude optimum.
-- [ ] Edelbaum low-thrust Δv.
+- [x] Pure plane change `2·v·sin(Δi/2)`; combined plane-change+altitude optimum
+  (`orbital3d.plane_change_dv`, `combined_circularize_plane_dv`, `combined_plane_altitude_dv`).
+- [x] Edelbaum low-thrust Δv (`orbital3d.edelbaum_dv`).
 - [ ] Patched-conic lunar/Mars transfer; note where low-energy transfers should win.
 
 ## Immediate next steps
-1. Finish + record the 2-D diff-sim result (Milestone 1 close-out).
-2. 3-D env with full quaternion attitude control; re-validate circularize in 3-D.
-3. Plane change (3-D) with the correct `2·v·sin(Δi/2)` baseline.
-4. The KSC combined-maneuver mission as the first "sequenced" test.
-5. Then Tier-2 (low thrust / Edelbaum) and Tier-3 (Earth–Moon).
+1. ~~2-D diff-sim (Milestone 1)~~, ~~3-D circularize~~, ~~target-conditioning~~,
+   ~~combined circularize + plane-change~~ — done (see Current status).
+2. **Low-thrust task (Tier-2):** drop `A_THRUST` toward SEP levels, lengthen the
+   horizon with f&g coast compression, train vs the `edelbaum_dv` baseline. Add
+   **eclipse** (needs the Sun ephemeris wired into `deriv`) so the policy must plan
+   thrust-off arcs — the per-orbit structure that can beat Edelbaum.
+3. Remaining environmental fidelity: drag (aerobraking), SRP (comes with the Sun
+   ephemeris). J2 already in.
+4. The KSC two-burn combined transfer (LEO→GEO) as the first "sequenced" mission,
+   using `combined_plane_altitude_dv` as the baseline.
+5. Then Tier-3 (Earth–Moon / low-energy transfers, ephemeris N-body).
