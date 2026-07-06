@@ -136,7 +136,13 @@ correct baseline; using Hohmann everywhere would handicap the agent.
    shadow**, only a thrust-time cost. What the transfer's burn-location freedom DOES
    buy is *robustness*: it recovers success under eclipse (46→74%) where the pinned
    circularize couldn't (E2: 68→69%). A real shadow-avoidance skill needs a binding
-   cost (deadline / mass penalty). `scripts/transfer_sim.py`.
+   cost (deadline / mass penalty). `scripts/transfer_sim.py`. **Build D follow-up:**
+   even giving the policy shadow *observability* (sun in the obs) + an artificial
+   shadow-command penalty only yields MODEST avoidance (shadow 38→34% at a gentle
+   weight; a strong weight backfires into global throttle-down). So the
+   eclipse-beats-Edelbaum idea is thoroughly refuted — avoidance is weak even when
+   incentivized, because decision-level (200s) control is coarse vs shadow arcs and
+   gating a free-cost action gives no gradient pull. `scripts/eclipse_cost_sim.py`.
 8. **Thrust-conditioned generalist** — `A_THRUST` in the observation, one policy
    across the thrust band. **Done (Build A):** ONE 14-input net recovers ~97% of the
    five E1 specialists' band-wide success (82.1% mean vs 84.3%), matching within
