@@ -117,3 +117,34 @@ def test_combined_apogee_matches_vector_dv():
     dv_peri = abs(orb.vis_viva(LEO, a_t) - orb.speed_circular(LEO))
     d = orb3.combined_plane_altitude_dv(LEO, GEO, di)
     assert d["combined_apogee"] == pytest.approx(dv_peri + dv_apogee, rel=1e-12)
+
+
+# --- Edelbaum low-thrust baseline ------------------------------------------
+
+
+def test_edelbaum_pure_altitude_is_speed_difference():
+    # Δi=0 → |V0 - Vf|, the pure low-thrust altitude change
+    dv = orb3.edelbaum_dv(LEO, GEO, 0.0)
+    assert dv == pytest.approx(abs(orb.speed_circular(LEO) - orb.speed_circular(GEO)), rel=1e-12)
+
+
+def test_edelbaum_pure_plane_change():
+    # same radius → 2V·sin(π/4·Δi); the continuous-turn form
+    r = 7000.0; V = orb.speed_circular(r); di = np.radians(30.0)
+    assert orb3.edelbaum_dv(r, r, di) == pytest.approx(2 * V * np.sin(np.pi / 4 * di), rel=1e-9)
+
+
+def test_edelbaum_leo_geo_28deg_anchor():
+    # literature anchor: LEO→GEO with 28.5° plane change ≈ 5.96 km/s
+    dv = orb3.edelbaum_dv(LEO, GEO, np.radians(28.5))
+    assert dv == pytest.approx(5.96, abs=0.05)
+    # coplanar low-thrust LEO→GEO ≈ 4.66 km/s
+    assert orb3.edelbaum_dv(LEO, GEO, 0.0) == pytest.approx(4.66, abs=0.05)
+
+
+def test_edelbaum_monotonic_in_plane_change():
+    dvs = [orb3.edelbaum_dv(LEO, GEO, np.radians(d)) for d in (0, 10, 20, 30, 40)]
+    assert all(b > a for a, b in zip(dvs, dvs[1:]))
+    # continuous small plane change costs π/2× the impulsive one (known penalty)
+    r = 20000.0; V = orb.speed_circular(r); di = np.radians(1.0)
+    assert orb3.edelbaum_dv(r, r, di) / orb3.plane_change_dv(V, di) == pytest.approx(np.pi / 2, abs=0.02)
