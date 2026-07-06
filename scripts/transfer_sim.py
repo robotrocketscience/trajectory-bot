@@ -210,7 +210,10 @@ def train(args):
     key = random.PRNGKey(args.seed)
     ps, prt = sample_transfer(random.PRNGKey(999_983), 512)
     pedel = edelbaum_coplanar(ps, prt)
-    roll = jax.jit(lambda p, s, r: rollout(p, s, r, args.horizon))
+    # the eclipse eval graph trips the intermittent XLA GPU bug at batch 512 (the
+    # 4096 shadow-probe is fine); run the in-run eval on CPU when eclipse is on.
+    eb = "cpu" if J.ECLIPSE else None
+    roll = jax.jit(lambda p, s, r: rollout(p, s, r, args.horizon), backend=eb)
     best = None; best_s = -1.0
     for it in range(args.iters):
         s0, rt = sample_transfer(random.fold_in(key, it), args.batch)
