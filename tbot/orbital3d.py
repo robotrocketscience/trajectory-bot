@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
-from .orbital import MU_EARTH
+from .orbital import MU_EARTH, speed_circular
 
 Vec = npt.NDArray[np.float64]
 
@@ -71,3 +71,24 @@ def plane_change_dv(v: float, delta_i: float) -> float:
     plane changes are done at apoapsis / combined with a transfer's apogee burn.
     """
     return 2.0 * v * abs(np.sin(delta_i / 2.0))
+
+
+def edelbaum_dv(r0: float, rf: float, delta_i: float, mu: float = MU_EARTH) -> float:
+    """Edelbaum low-thrust Δv [km/s] for a combined altitude + plane change between
+    circular orbits: ``ΔV = √(V₀² − 2 V₀ V_f cos(π/2·Δi) + V_f²)`` (Δi [rad]).
+
+    The closed-form optimum for a constant-acceleration, quasi-circular, two-body
+    spiral with a piecewise-constant yaw law (Edelbaum 1961). It is the correct
+    baseline for the low-thrust regime — the yardstick a diff-sim low-thrust policy
+    is judged against (and the analog of Hohmann/combined for impulsive maneuvers).
+
+    Limits: Δi=0 → |V₀−V_f| (pure altitude); r0=rf → 2V·sin(π/4·Δi) (pure plane
+    change, the π/2 continuous-turn penalty over impulsive 2V·sin(Δi/2) at small Δi).
+    Anchor: LEO(≈7.73)→GEO(≈3.07) at 28.5° → ≈5.96 km/s (matches the literature).
+    """
+    v0 = speed_circular(r0, mu)
+    vf = speed_circular(rf, mu)
+    # arg = (V₀−V_f)² at Δi=0; clamp so float rounding can't make it slightly
+    # negative → NaN (the pure-altitude edge case).
+    arg = v0 * v0 - 2.0 * v0 * vf * np.cos(0.5 * np.pi * delta_i) + vf * vf
+    return float(np.sqrt(max(arg, 0.0)))
