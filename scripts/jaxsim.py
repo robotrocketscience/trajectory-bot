@@ -26,6 +26,11 @@ from jax import lax, jit, value_and_grad, random
 MU = 398600.4418; R_BODY = 6378.137
 DT = 10.0; REPEAT = 20
 A_THRUST = 5e-3; RATE_GAIN = 0.1; K_P = 0.5; MAX_RATE = 0.05; DV_BUDGET = 2.0
+# J2 oblateness perturbation. 0.0 = pure two-body (bit-exact legacy path); set to
+# J2_EARTH to enable. z is the equatorial normal (= the sim's spin axis; sample_orbits
+# builds inclination about it), so the standard ECI J2 acceleration applies directly.
+J2_COEF = 0.0
+J2_EARTH = 1.08262668e-3
 # --absorb: success is absorbing in the rollout (env-style termination). Without it
 # the loss grades the FINAL state of a full 60-decision rollout, so an episode that
 # reaches tolerance mid-episode is dragged off target by exploration noise (latch
@@ -122,6 +127,16 @@ def deriv(state, omega_cmd, throttle):
     # rollouts. Valid orbits (r > R_BODY+400) are unaffected (parity preserved).
     rmag = jnp.maximum(snorm(r, axis=1, keepdims=True), R_BODY)
     grav = -MU * r / rmag ** 3
+    if J2_COEF != 0.0:
+        # Vallado J2 acceleration (ECI): smooth, differentiable, ->0 with distance.
+        # z-term differs (3 - 5(z/r)²) from the x,y-term (1 - 5(z/r)²).
+        zr2 = (r[:, 2:3] / rmag) ** 2
+        pre = -1.5 * J2_COEF * MU / rmag ** 2 * (R_BODY / rmag) ** 2
+        axy = pre * (1.0 - 5.0 * zr2)
+        az = pre * (3.0 - 5.0 * zr2)
+        a_j2 = jnp.concatenate([axy * r[:, 0:1] / rmag, axy * r[:, 1:2] / rmag,
+                                az * r[:, 2:3] / rmag], axis=1)
+        grav = grav + a_j2
     b_hat = jnp.zeros_like(v).at[:, 0].set(1.0)
     tdir = qrotate(q, b_hat)
     acc = grav + throttle[:, None] * A_THRUST * tdir
