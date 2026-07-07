@@ -308,6 +308,102 @@ def run_manifold(args):
               f"(drift {abs(Cj_end-Cj):.1e}, ballistic)")
 
 
+def moon_rel_np(S):
+    """G's verified capture criterion in numpy: Moon-relative distance, inertial speed
+    relative to the (stationary) Moon (v_rot + ω×r_rel), osculating Moon energy E."""
+    rrelx = S[..., 0] - R_MOON[0]
+    rrely = S[..., 1] - R_MOON[1]
+    rrelz = S[..., 2] - R_MOON[2]
+    vx = S[..., 3] - rrely
+    vy = S[..., 4] + rrelx
+    vz = S[..., 5]
+    d = np.sqrt(rrelx ** 2 + rrely ** 2 + rrelz ** 2)
+    speed = np.sqrt(vx ** 2 + vy ** 2 + vz ** 2)
+    E = 0.5 * speed ** 2 - MU / np.maximum(d, 1e-9)
+    return d, speed, E
+
+
+def count_moon_revs(traj):
+    """Revolutions around the Moon = total unwrapped angle of r_rel / 2π."""
+    ang = np.unwrap(np.arctan2(traj[:, 1] - R_MOON[1], traj[:, 0] - R_MOON[0]))
+    return abs(ang[-1] - ang[0]) / (2.0 * np.pi)
+
+
+def manifold_ics(s0, N, v_s, n_seed, pos_disp, dt):
+    """Seed the stable manifold: at n_seed points around the orbit, transport v_s by
+    Φ(t_i) and offset by ±pos_disp (both branches). Returns (K,6) ICs + a label list."""
+    seed_idx = [int(round(k)) for k in np.linspace(0, N, n_seed, endpoint=False)]
+    ser = stm_series(s0, dt, N, seed_idx)
+    ics = []
+    labels = []
+    for i in seed_idx:
+        X, Phi = ser[i]
+        d = Phi @ v_s
+        scale = pos_disp / np.linalg.norm(d[0:3])
+        for sgn in (+1.0, -1.0):
+            ics.append(X + sgn * scale * d)
+            labels.append((i, sgn))
+    return np.array(ics), labels
+
+
+def bounded_verify(s_ca, dt, max_steps):
+    """From a closest-approach state, propagate ballistically forward; report time
+    inside the Hill sphere and Moon revolutions accrued while bound."""
+    traj = propagate_batch(s_ca[None, :], dt, max_steps, record_every=1)[:, 0, :]
+    d = np.linalg.norm(traj[:, 0:3] - R_MOON, axis=1)
+    outside = np.where(d > R_HILL)[0]
+    left = outside[0] if len(outside) else len(d)
+    bound_time = left * dt
+    revs = count_moon_revs(traj[:max(left, 1)])
+    return bound_time, revs, float(d.min())
+
+
+def run_capture(args):
+    print("=== R-H3: stable-manifold ballistic-capture sweep ===")
+    lp = C.lagrange_points()
+    targets = [("L1", args.ax_l1), ("L2", args.ax_l2)]
+    for name, Ax in targets:
+        xL = lp[name]
+        s0, T, N, orbit, M, v_s, lam, w, res = orbit_and_monodromy(xL, Ax, args.dt)
+        ics, labels = manifold_ics(s0, N, v_s, args.n_seed, args.pos_disp, args.dt)
+        n_prop = int(round(args.t_prop / args.dt))
+        # trace the stable manifold BACKWARD (dt<0): away from the orbit toward its origin
+        traj = propagate_batch(ics, -args.dt, n_prop, record_every=args.rec_every)
+        # traj shape (frames, K, 6)
+        C_orbit = jacobi_np(s0)
+        best = None
+        n_cap = 0
+        for k in range(ics.shape[0]):
+            tk = traj[:, k, :]
+            d, sp, E = moon_rel_np(tk)
+            j = int(np.argmin(d))
+            d_ca, E_ca = d[j], E[j]
+            entered = d.min() < R_HILL
+            if entered and E_ca < 0.0:
+                n_cap += 1
+                # capture window: contiguous E<0 around closest approach
+                if best is None or E_ca < best["E_ca"]:
+                    best = {"k": k, "label": labels[k], "d_ca": float(d_ca),
+                            "E_ca": float(E_ca), "s_ca": tk[j].copy(),
+                            "dmin": float(d.min())}
+        print(f"  {name} (Ax={Ax:.3f}, C={C_orbit:.5f}, Hill={R_HILL:.3f}): "
+              f"{ics.shape[0]} manifold ICs, {n_cap} reach Hill sphere with E_moon<0")
+        if best is None:
+            print("    no manifold trajectory achieved E_moon<0 inside the Hill "
+                  "sphere in this window — honest null for this orbit/amplitude.")
+            continue
+        bt, revs, dmin_fwd = bounded_verify(best["s_ca"], args.dt, args.verify_steps)
+        print(f"    BEST capture: closest {best['d_ca']*C.L_UNIT_KM:.0f} km, "
+              f"E_moon={best['E_ca']:+.4f} (<0, BOUND); seed idx={best['label'][0]} "
+              f"branch={best['label'][1]:+.0f}")
+        print(f"    bounded-prop from closest approach: stays in Hill sphere "
+              f"{bt:.3f} nondim (~{bt*C.T_UNIT_S/86400:.2f} d), {revs:.2f} Moon revs, "
+              f"min dist {dmin_fwd*C.L_UNIT_KM:.0f} km")
+        verdict = "VERIFIED temporary capture" if revs >= 2.0 else \
+                  ("partial (K<2 revs)" if revs >= 0.5 else "grazing (not a real capture)")
+        print(f"    → {verdict}")
+
+
 def run_orbit(args):
     print("=== R-H1: Lyapunov orbits via differential correction ===")
     lp = C.lagrange_points()
@@ -332,10 +428,16 @@ def main():
     ap.add_argument("--check", action="store_true", help="cross-check numpy vs JAX dynamics")
     ap.add_argument("--orbit", action="store_true", help="R-H1: Lyapunov orbits")
     ap.add_argument("--manifold", action="store_true", help="R-H2: monodromy + manifold")
+    ap.add_argument("--capture", action="store_true", help="R-H3: capture sweep")
     ap.add_argument("--dt", type=float, default=1e-4)
     ap.add_argument("--ax-l1", type=float, default=0.02)
     ap.add_argument("--ax-l2", type=float, default=0.02)
     ap.add_argument("--eps", type=float, default=1e-5)
+    ap.add_argument("--n-seed", type=int, default=40)
+    ap.add_argument("--pos-disp", type=float, default=1e-4)   # ~38 km manifold offset
+    ap.add_argument("--t-prop", type=float, default=6.0)      # backward manifold time
+    ap.add_argument("--rec-every", type=int, default=5)
+    ap.add_argument("--verify-steps", type=int, default=40000)
     args = ap.parse_args()
     if args.check:
         check_dynamics()
@@ -343,6 +445,8 @@ def main():
         run_orbit(args)
     if args.manifold:
         run_manifold(args)
+    if args.capture:
+        run_capture(args)
 
 
 if __name__ == "__main__":
