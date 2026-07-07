@@ -134,6 +134,111 @@ def differential_correct(xL, Ax, dt=1e-4, tol=1e-11, maxit=40):
     return s0.copy(), 2.0 * thalf, wp, maxit, abs(sc[3])
 
 
+# ----- batched float64 dynamics (STM finite-difference + manifold propagation) -----
+def accel_np_batch(S):
+    x, y, z = S[:, 0], S[:, 1], S[:, 2]
+    vx, vy, vz = S[:, 3], S[:, 4], S[:, 5]
+    r1 = np.sqrt((x + MU) ** 2 + y ** 2 + z ** 2)
+    r2 = np.sqrt((x - 1.0 + MU) ** 2 + y ** 2 + z ** 2)
+    ax = 2.0 * vy + x - OM * (x + MU) / r1 ** 3 - MU * (x - 1.0 + MU) / r2 ** 3
+    ay = -2.0 * vx + y - OM * y / r1 ** 3 - MU * y / r2 ** 3
+    az = -OM * z / r1 ** 3 - MU * z / r2 ** 3
+    return np.stack([vx, vy, vz, ax, ay, az], axis=1)
+
+
+def rk4_np_batch(S, dt):
+    k1 = accel_np_batch(S)
+    k2 = accel_np_batch(S + 0.5 * dt * k1)
+    k3 = accel_np_batch(S + 0.5 * dt * k2)
+    k4 = accel_np_batch(S + dt * k3)
+    return S + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+
+
+def jacobi_np_batch(S):
+    x, y, z = S[:, 0], S[:, 1], S[:, 2]
+    r1 = np.sqrt((x + MU) ** 2 + y ** 2 + z ** 2)
+    r2 = np.sqrt((x - 1.0 + MU) ** 2 + y ** 2 + z ** 2)
+    Om = 0.5 * (x ** 2 + y ** 2) + OM / r1 + MU / r2
+    return 2.0 * Om - (S[:, 3] ** 2 + S[:, 4] ** 2 + S[:, 5] ** 2)
+
+
+def jac_A(s):
+    """State-derivative Jacobian A = d(deriv)/d(state) for the rotating-frame CR3BP.
+    A = [[0, I], [G, Ω_v]]; G = Hessian of the pseudo-potential U, Ω_v = Coriolis."""
+    x, y, z = s[0], s[1], s[2]
+    dx1, dx2 = x + MU, x - 1.0 + MU
+    r1 = np.sqrt(dx1 * dx1 + y * y + z * z)
+    r2 = np.sqrt(dx2 * dx2 + y * y + z * z)
+    m1, m2 = OM, MU
+    a1, b1 = m1 / r1 ** 3, 3.0 * m1 / r1 ** 5
+    a2, b2 = m2 / r2 ** 3, 3.0 * m2 / r2 ** 5
+    Gxx = 1.0 - (a1 + a2) + b1 * dx1 * dx1 + b2 * dx2 * dx2
+    Gyy = 1.0 - (a1 + a2) + b1 * y * y + b2 * y * y
+    Gzz = 0.0 - (a1 + a2) + b1 * z * z + b2 * z * z
+    Gxy = b1 * dx1 * y + b2 * dx2 * y
+    Gxz = b1 * dx1 * z + b2 * dx2 * z
+    Gyz = b1 * y * z + b2 * y * z
+    G = np.array([[Gxx, Gxy, Gxz], [Gxy, Gyy, Gyz], [Gxz, Gyz, Gzz]])
+    Ov = np.array([[0.0, 2.0, 0.0], [-2.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    A = np.zeros((6, 6))
+    A[0:3, 3:6] = np.eye(3)
+    A[3:6, 0:3] = G
+    A[3:6, 3:6] = Ov
+    return A
+
+
+def _var_deriv(yv):
+    s = yv[:6]
+    Phi = yv[6:].reshape(6, 6)
+    ds = accel_np(s)                            # [v(3), a(3)]
+    dPhi = jac_A(s) @ Phi
+    return np.concatenate([ds, dPhi.reshape(-1)])
+
+
+def _rk4_generic(f, yv, dt):
+    k1 = f(yv); k2 = f(yv + 0.5 * dt * k1)
+    k3 = f(yv + 0.5 * dt * k2); k4 = f(yv + dt * k3)
+    return yv + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+
+
+def stm_series(s0, dt, N, sample_idx):
+    """Integrate the VARIATIONAL equations Φ'=A(t)Φ (Φ(0)=I) alongside the state.
+    Accurate for highly-unstable orbits where finite-differencing the flow fails
+    (the λ≈2000 unstable direction otherwise swamps the 1/λ stable one). Returns
+    {i: (state, Φ(t_i))}."""
+    yv = np.concatenate([s0, np.eye(6).reshape(-1)])
+    sample_idx = set(sample_idx)
+    out = {}
+    if 0 in sample_idx:
+        out[0] = (yv[:6].copy(), yv[6:].reshape(6, 6).copy())
+    for i in range(1, N + 1):
+        yv = _rk4_generic(_var_deriv, yv, dt)
+        if i in sample_idx:
+            out[i] = (yv[:6].copy(), yv[6:].reshape(6, 6).copy())
+    return out
+
+
+def stable_eigvec(M):
+    """Real eigenvector of the monodromy matrix for the |λ|<1 (stable) real eigenvalue."""
+    w, V = np.linalg.eig(M)
+    real = np.abs(w.imag) < 1e-6
+    cand = [(abs(w[k]), k) for k in range(len(w)) if real[k] and abs(w[k]) < 0.999]
+    cand.sort()                                 # smallest |λ| = most stable
+    k = cand[0][1]
+    v = np.real(V[:, k])
+    return v / np.linalg.norm(v), float(np.real(w[k])), w
+
+
+def propagate_batch(S, dt, n, record_every=1):
+    """Propagate a batch (K,6) for n steps; return array (n//record_every+1, K, 6)."""
+    frames = [S.copy()]
+    for i in range(1, n + 1):
+        S = rk4_np_batch(S, dt)
+        if i % record_every == 0:
+            frames.append(S.copy())
+    return np.array(frames)
+
+
 def propagate_np(s0, dt, n):
     traj = np.empty((n + 1, 6))
     traj[0] = s0
@@ -159,6 +264,50 @@ def check_dynamics():
           f"(float32 JAX vs float64 numpy; want <1e-4)")
 
 
+def orbit_and_monodromy(xL, Ax, dt):
+    """Diff-correct the Lyapunov orbit; return (s0, T, N, orbit_pts, M, v_stable, λ)."""
+    s0, T, wp, it, res = differential_correct(xL, Ax, dt=dt)
+    N = int(round(T / dt))
+    orbit = propagate_batch(s0[None, :], dt, N, record_every=1)[:, 0, :]   # (N+1,6)
+    ser = stm_series(s0, dt, N, [N])
+    M = ser[N][1]
+    v_s, lam, w = stable_eigvec(M)
+    return s0, T, N, orbit, M, v_s, lam, w, res
+
+
+def nearest_dist(state, orbit):
+    return float(np.min(np.linalg.norm(orbit[:, 0:3] - state[0:3], axis=1)))
+
+
+def run_manifold(args):
+    print("=== R-H2: monodromy eigenstructure + stable manifold ===")
+    lp = C.lagrange_points()
+    for name, Ax in (("L1", args.ax_l1), ("L2", args.ax_l2)):
+        xL = lp[name]
+        s0, T, N, orbit, M, v_s, lam, w, res = orbit_and_monodromy(xL, Ax, args.dt)
+        mags = np.sort(np.abs(w))[::-1]
+        lam_u = mags[0]
+        nu = 0.5 * (lam_u + 1.0 / lam_u)
+        detM = float(np.linalg.det(M))
+        print(f"  {name} (Ax={Ax:.3f}, T={T:.4f}): monodromy |eigs| = "
+              f"[{', '.join(f'{m:.3g}' for m in mags)}]")
+        print(f"     det M={detM:.6f} (symplectic→1); unstable λ={lam_u:.4g}, "
+              f"reciprocal 1/λ={1/lam_u:.3g} vs min|eig|={mags[-1]:.3g}; ν={nu:.4g}")
+        print(f"     stable eigenvalue λ_s={lam:.4g}  (|λ_s|={abs(lam):.4g}<1)")
+        # ballistic + asymptotic checks on the stable direction
+        eps = args.eps
+        s_plus = s0 + eps * v_s
+        fwd = propagate_batch(s_plus[None, :], args.dt, N, record_every=1)[:, 0, :]
+        d0 = nearest_dist(fwd[0], orbit)
+        dT = nearest_dist(fwd[-1], orbit)
+        Cj = jacobi_np(s_plus)
+        Cj_end = jacobi_np(fwd[-1])
+        print(f"     stable check: perturb +{eps:g}·v_s, integrate 1 period FORWARD → "
+              f"dist-to-orbit {d0:.2e} → {dT:.2e} (shrinks ~1/λ={1/lam_u:.2e})")
+        print(f"     Jacobi along manifold: {Cj:.6f} → {Cj_end:.6f} "
+              f"(drift {abs(Cj_end-Cj):.1e}, ballistic)")
+
+
 def run_orbit(args):
     print("=== R-H1: Lyapunov orbits via differential correction ===")
     lp = C.lagrange_points()
@@ -182,14 +331,18 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="cross-check numpy vs JAX dynamics")
     ap.add_argument("--orbit", action="store_true", help="R-H1: Lyapunov orbits")
+    ap.add_argument("--manifold", action="store_true", help="R-H2: monodromy + manifold")
     ap.add_argument("--dt", type=float, default=1e-4)
     ap.add_argument("--ax-l1", type=float, default=0.02)
     ap.add_argument("--ax-l2", type=float, default=0.02)
+    ap.add_argument("--eps", type=float, default=1e-5)
     args = ap.parse_args()
     if args.check:
         check_dynamics()
     if args.orbit:
         run_orbit(args)
+    if args.manifold:
+        run_manifold(args)
 
 
 if __name__ == "__main__":
