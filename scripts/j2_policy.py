@@ -184,6 +184,8 @@ def adam(grad_fn, x0, steps, lr, log_every=100, clip=1.0, lr_final_frac=0.02):
     best_x, best_loss = x0, np.inf
     for t in range(1, steps + 1):
         (loss, aux), g = grad_fn(x)
+        if float(loss) < best_loss:                 # track BEFORE the step: best_x must be
+            best_loss, best_x = float(loss), x.copy()   # the x that PRODUCED best_loss
         g = np.asarray(g)
         gn = np.sqrt(np.sum(g * g))                 # global-norm gradient clipping
         if gn > clip:
@@ -194,8 +196,6 @@ def adam(grad_fn, x0, steps, lr, log_every=100, clip=1.0, lr_final_frac=0.02):
         lr_t = lr * (lr_final_frac + (1 - lr_final_frac)
                      * 0.5 * (1 + np.cos(np.pi * t / steps)))   # cosine LR decay
         x = x - lr_t * mh / (np.sqrt(vh) + eps)
-        if float(loss) < best_loss:                 # loss IS true total Δv now
-            best_loss, best_x = float(loss), x.copy()
         if t % log_every == 0 or t == 1:
             dv_lt, dv_cl, a, e, inc, raan = [float(z) for z in aux]
             print(f"  it{t:4d} totΔv={float(loss):6.3f} (lt={dv_lt:.3f} clean={dv_cl:.3f}) "
@@ -290,6 +290,8 @@ def run_starts(gfn, shape, args):
     results = []
     for j, x0 in enumerate(inits):
         bx, bl = adam(gfn, x0, args.steps, args.lr, log_every=args.log_every, clip=args.clip)
+        if not np.isfinite(bl):
+            bl = np.inf                              # diverged start → never selected
         results.append((bl, bx))
         print(f"  start {j} ({'zero' if j == 0 else 'rand'}): best total Δv = {bl:.4f}")
     results.sort(key=lambda r: r[0])
@@ -352,7 +354,7 @@ def main():
     ap.add_argument("--amax", type=float, default=2e-5)  # max thrust accel km/s²
     ap.add_argument("--rboost", type=float, default=42164.0)  # bi-elliptic boost radius (km)
     ap.add_argument("--starts", type=int, default=3)    # random restarts (+1 zero-init)
-    ap.add_argument("--init-std", type=float, default=0.5)   # random-start coeff std
+    ap.add_argument("--init-std", type=float, default=0.2)   # random-start coeff std
     ap.add_argument("--log-every", type=int, default=100)
     args = ap.parse_args()
     if args.check:
