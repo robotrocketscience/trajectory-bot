@@ -54,21 +54,101 @@ def rollout2(params, s0, n, dt, mc_step):
 
 
 def capture_metrics(traj, tau=0.005):
-    """Softmin-weighted closest lunar approach: distance, and Moon-relative energy."""
+    """Softmin-weighted closest lunar approach: distance, Moon-relative speed, energy."""
     d, speed, E = Cap.moon_rel(traj)
     w = jax.nn.softmax(-d / tau)
     d_ca = (w * d).sum()
+    speed_ca = (w * speed).sum()
     E_ca = (w * E).sum()
-    return d_ca, E_ca
+    return d_ca, speed_ca, E_ca
 
 
-def objective(params, s0, n, dt, mc_step, w_cap, w_reach, box):
+def objective(params, s0, n, dt, mc_step, w_v, w_reach, box, _unused):
+    """Capture = reach the Moon AND arrive SLOW (low Moon-relative speed → E<0). Rewarding
+    approach speed (not distance) avoids the deep-fast-plunge reward-hack and pushes
+    toward the low-energy gateway approach; the mid-course burn pays to slow down."""
     traj = rollout2(params, s0, n, dt, mc_step)
-    d_ca, E_ca = capture_metrics(traj)
+    d_ca, speed_ca, E_ca = capture_metrics(traj)
     dv = jnp.sqrt((params[0:2] ** 2).sum() + 1e-12) + jnp.sqrt((params[2:4] ** 2).sum() + 1e-12)
     reach = w_reach * jnp.maximum(d_ca - box, 0.0)      # get near the Moon
-    cap = w_cap * jnp.maximum(E_ca, 0.0)                # drive Moon-energy < 0 (bound)
-    return dv + reach + cap, (dv, d_ca, E_ca)
+    slow = w_v * speed_ca                               # arrive slow → captured
+    return dv + reach + slow, (dv, d_ca, E_ca)
+
+
+def true_closest(dv0, s0, n, dt):
+    """True (argmin) closest lunar distance and its step for a departure-only rollout."""
+    traj = rollout2(jnp.concatenate([dv0, jnp.zeros(2)]), s0, n, dt, -1)
+    d, _, _ = Cap.moon_rel(traj)
+    d = np.asarray(d)
+    j = int(np.argmin(d))
+    return float(d[j]), j
+
+
+def adam(p, grad_fn, iters, lr):
+    m = jnp.zeros_like(p); v = jnp.zeros_like(p); t = 0
+    for _ in range(iters):
+        (val, aux), g = grad_fn(p)
+        gn = jnp.sqrt((g ** 2).sum())
+        g = g * jnp.minimum(1.0, 10.0 / jnp.maximum(gn, 1e-9))   # clip
+        t += 1; m = 0.9 * m + 0.1 * g; v = 0.999 * v + 0.001 * g * g
+        p = p - lr * (m / (1 - 0.9 ** t)) / (jnp.sqrt(v / (1 - 0.999 ** t)) + 1e-8)
+    return p
+
+
+def verify_capture_jax(state, dt, steps):
+    """From a closest-approach state, coast (no thrust); revs inside the Hill sphere."""
+    s = state; xs = [np.asarray(s)]
+    for _ in range(steps):
+        s = C.rk4(s, dt); xs.append(np.asarray(s))
+    xs = np.array(xs)
+    rmoon = np.array([1.0 - MU, 0.0, 0.0])
+    d = np.linalg.norm(xs[:, 0:3] - rmoon, axis=1)
+    out = np.where(d > R_HILL)[0]
+    left = out[0] if len(out) else len(d)
+    ang = np.unwrap(np.arctan2(xs[:left, 1] - rmoon[1], xs[:left, 0] - rmoon[0]))
+    revs = abs(ang[-1] - ang[0]) / (2 * np.pi) if left > 1 else 0.0
+    return left * dt, revs
+
+
+def optimize(args, mode):
+    s0 = T.leo_state(args.r_leo)
+    tli = T.hohmann_tli(args.r_leo)
+    n = args.n
+    if mode == "raw":
+        p = jnp.array([0.0, tli, 0.0, 0.0])            # naive Hohmann-direction init (G-like)
+        mc = n // 2
+    else:                                              # manifold/scan-informed seed:
+        # find (by TRUE-distance mini-scan) a departure that actually reaches the Moon,
+        # then a retrograde insertion burn timed at that closest approach — the
+        # manifold/I 2-burn structure (depart-to-Moon + slow-down-to-capture).
+        best = None
+        for an in np.linspace(0, 2 * np.pi, 72, endpoint=False):
+            dv0c = jnp.array([tli * np.cos(an), tli * np.sin(an)])
+            dmin, j = true_closest(dv0c, s0, n, args.dt)
+            if best is None or dmin < best[0]:
+                best = (dmin, j, dv0c)
+        _, mc, dv0 = best
+        traj0 = rollout2(jnp.concatenate([dv0, jnp.zeros(2)]), s0, n, args.dt, -1)
+        v_mc = np.asarray(traj0[mc, 3:5])
+        dv1 = jnp.asarray(-args.seed_ins * v_mc / (np.linalg.norm(v_mc) + 1e-9))
+        p = jnp.concatenate([dv0, dv1])
+        print(f"       seed: departure reaches {best[0]*C.L_UNIT_KM:.0f} km at step {mc}")
+    grad_fn = jax.jit(jax.value_and_grad(
+        lambda q: objective(q, s0, n, args.dt, mc, args.w_v, args.w_reach, args.box, 0.0),
+        has_aux=True))
+    p = adam(p, grad_fn, args.iters, args.lr)
+    (val, (dv, d_ca, E_ca)), _ = grad_fn(p)
+    # verify at the true closest-approach state of the optimized trajectory
+    traj = rollout2(p, s0, n, args.dt, mc)
+    d, _, _ = Cap.moon_rel(traj)
+    j = int(np.argmin(np.asarray(d)))
+    bt, revs = verify_capture_jax(jnp.asarray(traj[j]), args.dt, args.verify_steps)
+    dvk = float(dv) * V_UNIT
+    print(f"  [{mode}] Δv={float(dv):.4f} ({dvk:.3f} km/s)  closest={float(d[j])*C.L_UNIT_KM:.0f} km  "
+          f"E_moon={float(E_ca):+.4f}  mc_step={mc}")
+    print(f"       bounded-prop: {revs:.1f} Moon revs, ~{bt*C.T_UNIT_S/86400:.1f} d  → "
+          f"{'VERIFIED capture' if revs>=2 else 'no verified capture (flyby/hyperbolic)'}")
+    return dict(mode=mode, dv=float(dv), dvk=dvk, d_ca=float(d[j]), E=float(E_ca), revs=revs)
 
 
 def verify(args):
@@ -80,7 +160,7 @@ def verify(args):
     # Hohmann departure, no mid-course burn
     p0 = jnp.array([0.0, tli, 0.0, 0.0])
     val_grad = jax.jit(jax.value_and_grad(
-        lambda p: objective(p, s0, n, args.dt, mc, args.w_cap, args.w_reach, args.box),
+        lambda p: objective(p, s0, n, args.dt, mc, args.w_v, args.w_reach, args.box, 0.0),
         has_aux=True))
     (val, (dv, d_ca, E_ca)), g = val_grad(p0)
     gfin = bool(np.all(np.isfinite(np.asarray(g))))
@@ -106,7 +186,7 @@ def scan(args):
     for mg in mags:
         for an in angs:
             p = jnp.array([mg * np.cos(an), mg * np.sin(an), 0.0, 0.0])
-            d_ca, E_ca = (float(x) for x in roll(p))
+            d_ca, sp_ca, E_ca = (float(x) for x in roll(p))
             if best is None or d_ca < best[0]:
                 best = (d_ca, E_ca, mg, an)
     d_ca, E_ca, mg, an = best
@@ -121,18 +201,28 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--verify", action="store_true")
     ap.add_argument("--scan", action="store_true")
+    ap.add_argument("--optimize", action="store_true", help="R-J2/J3: raw vs seeded diff-sim")
     ap.add_argument("--r-leo", type=float, default=0.03)
     ap.add_argument("--n", type=int, default=6000)
     ap.add_argument("--dt", type=float, default=1e-3)
-    ap.add_argument("--w-cap", type=float, default=5.0)
+    ap.add_argument("--w-v", type=float, default=3.0)     # penalty on Moon-relative approach speed
     ap.add_argument("--w-reach", type=float, default=20.0)
-    ap.add_argument("--box", type=float, default=0.05)
+    ap.add_argument("--box", type=float, default=0.02)
+    ap.add_argument("--iters", type=int, default=400)
+    ap.add_argument("--lr", type=float, default=3e-3)
+    ap.add_argument("--seed-ang", type=float, default=220.0)   # scan-best departure angle
+    ap.add_argument("--seed-ins", type=float, default=0.5)     # insertion-burn seed magnitude
+    ap.add_argument("--verify-steps", type=int, default=8000)
     args = ap.parse_args()
     print(f"jax devices: {jax.devices()}", flush=True)
     if args.verify:
         verify(args)
     if args.scan:
         scan(args)
+    if args.optimize:
+        print("=== R-J2/J3: raw vs manifold-seeded diff-sim (2-burn capture) ===")
+        optimize(args, "raw")
+        optimize(args, "seeded")
 
 
 if __name__ == "__main__":
