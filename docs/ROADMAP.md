@@ -208,7 +208,19 @@ correct baseline; using Hohmann everywhere would handicap the agent.
     capture is demonstrated AND yields a small honest Δv beat; the Sun is needed for the
     **big** wins (permanent capture, capture into high orbits where Hohmann's capture
     burn is large, and a lower TLI), next via a 4-body (Sun-perturbed bicircular) or the
-    locked ephemeris N-body model below.
+    locked ephemeris N-body model below. **Build J — the LEARNED diff-sim policy reaches
+    Tier-3 capture** (`scripts/cr3bp_policy.py`): back on the primary method (backprop a
+    2-burn control through the CR3BP rollout), it achieves a **dt-robust VERIFIED
+    ballistic capture** (E_moon=−0.11, ~9–10 Moon revs / ~35 d bound, ~2.84 km/s) where
+    G's 1-burn search **stalled**. The enablers, honestly: the manifold/I-derived
+    **2-burn structure** (a 1-burn policy provably cannot capture — G's wall) plus a
+    **physically-correct approach-speed objective** (naive distance/energy objectives get
+    reward-hacked into deep-fast plunges — two such hacks caught and fixed). Manifold-
+    *seeding the init* barely mattered (raw ≈ seeded, 2.843 vs 2.828), so the manifold's
+    value was its **structural insight**, not warm-starting. Scope: this is a *direct*
+    capture (≈G's direct route, more robustly verified), not the low-energy beat. So the
+    learning agent now reaches verified multi-body capture — the Tier-3 milestone for the
+    method; a learned *low-energy* transfer and the ephemeris port remain open.
 12. **Earth–Mars transfer + capture** (heliocentric). Baseline: heliocentric Hohmann /
     porkchop optimum; explore gravity assists.
 13. **Gravity assist / flyby** as a maneuver primitive.
