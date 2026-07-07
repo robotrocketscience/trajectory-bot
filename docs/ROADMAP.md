@@ -221,6 +221,23 @@ correct baseline; using Hohmann everywhere would handicap the agent.
     capture (≈G's direct route, more robustly verified), not the low-energy beat. So the
     learning agent now reaches verified multi-body capture — the Tier-3 milestone for the
     method; a learned *low-energy* transfer and the ephemeris port remain open.
+    **Build K — first genuine beat of a physics-AWARE strategy (J2 node change), but
+    modest** (`scripts/j2_policy.py`, `scripts/j2_node.py`): R-K1 verified J2 secular nodal
+    regression numerically vs Vallado (<0.5% err) and the impulsive plane-change baseline.
+    R-K2 backprops a smooth low-thrust RTN-frame control (Fourier, 48 DOF, no structure
+    baked in) through a J2-on rollout, minimizing TRUE total Δv (low-thrust ∫|a|dt +
+    priced impulsive cleanup to the exact target). **Crucial honesty:** the J2-*blind*
+    impulsive plane change (2.89 km/s for -30°) is a strawman — the fair baseline is
+    *passive-J2* (coast the budget, let the node drift for free, clean the residual). The
+    genuine diff-sim win is ACTIVE drift-shaping (dive to speed the drift) beating PASSIVE
+    waiting, and it is only **5–12%**, only in a **~7–9 day budget window** (below ~6 d a
+    dive can't amortize its round trip; near ~10 d passive reaches target for free → nothing
+    to beat). The ~2–3× "win" over the J2-blind baseline is almost all passive J2-awareness,
+    not learning. Caveats: zero-init optimization is basin-sensitive (T=6 d traps in a
+    wasteful local min *below* passive — needs multi-start or a min(active,passive)
+    fallback); low-thrust Δv is idealized (per-step impulses). Net: the method *can* beat a
+    J2-aware optimum, but the margin is small and regime-specific — not the clean large beat
+    R-K1 prematurely implied.
 12. **Earth–Mars transfer + capture** (heliocentric). Baseline: heliocentric Hohmann /
     porkchop optimum; explore gravity assists.
 13. **Gravity assist / flyby** as a maneuver primitive.
