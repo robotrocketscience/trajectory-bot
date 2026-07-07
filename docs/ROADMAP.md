@@ -184,7 +184,21 @@ correct baseline; using Hohmann everywhere would handicap the agent.
     thin WSB set eludes a gradient+grid search over near-TLI departures (they all
     arrive fast/hyperbolic). The genuine low-energy beat needs L2-manifold seeding /
     multi-shooting — the clear next step, now on a validated engine + criterion.
-    `scripts/cr3bp_capture.py`.
+    `scripts/cr3bp_capture.py`. **Build H — manifold seeding closes G's gap:**
+    `scripts/cr3bp_manifold.py` builds the dynamical-systems structure a departure
+    grid lacked — closed L1/L2 **Lyapunov orbits** (STM differential correction,
+    Jacobi to machine precision), a **symplectic monodromy** (det=1) with the correct
+    hyperbolic reciprocal pair via variational equations, and their **stable
+    manifolds**. Seeding the search on the L2 stable manifold produces a **VERIFIED
+    temporary ballistic capture** (E_moon<0, closest ~289 km, ~2 lunar revs / ~2 weeks
+    bound) — the exact object G's grid found **zero** of. So manifold theory reaches
+    the thin capture set. **Boundary (honest, pre-registered null):** the pure
+    Earth–Moon CR3BP manifold does **not** descend to LEO (closest Earth perigee
+    70k–115k km), so no LEO→capture transfer *beat* is claimed — bridging that last gap
+    needs the Sun's 4-body term or a lunar flyby (how flown WSB transfers actually
+    work). **Net:** the low-energy capture is now demonstrated and reachable; the full
+    Δv-beating transfer remains the open frontier, next via a 4-body (Sun-perturbed
+    bicircular) or ephemeris model — which is the locked Tier-3 dynamics below.
 12. **Earth–Mars transfer + capture** (heliocentric). Baseline: heliocentric Hohmann /
     porkchop optimum; explore gravity assists.
 13. **Gravity assist / flyby** as a maneuver primitive.
