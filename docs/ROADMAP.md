@@ -170,6 +170,14 @@ correct baseline; using Hohmann everywhere would handicap the agent.
 ### Tier 3 — multi-body (original goal; Hohmann not optimal)
 11. **Earth–Moon transfer + capture.** Baselines: patched-conic Hohmann-like transfer
     *and* low-energy/ballistic capture (does the agent find the WSB route?).
+    **Started (Build F):** a **verified differentiable CR3BP engine** is built as the
+    clean first testbed (`scripts/cr3bp_sim.py` — Lagrange points exact, Jacobi
+    conserved to 2.4e-7). A first differentiable departure-burn transfer
+    (`scripts/cr3bp_transfer.py`) reaches the Moon vicinity at ~Hohmann cost (2.29 vs
+    2.31 km/s). The genuine low-energy CAPTURE beat is NOT yet demonstrated (that
+    flyby isn't a verified bounded capture) — it remains the open frontier; next is
+    capture verification + a manifold-seeded / multi-shooting search to tame the
+    chaotic long-arc gradients.
 12. **Earth–Mars transfer + capture** (heliocentric). Baseline: heliocentric Hohmann /
     porkchop optimum; explore gravity assists.
 13. **Gravity assist / flyby** as a maneuver primitive.
