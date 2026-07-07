@@ -134,6 +134,44 @@ seeded 1e6 gradients at every coast decision) are documented in
 [`docs/EXPERIMENTS_3D.md`](docs/EXPERIMENTS_3D.md) (3-D campaign) and
 [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) (2-D milestone).
 
+## Beyond circularize: the research frontier
+
+The same backprop-through-physics approach extends to multi-body dynamics and to
+maneuvers where a fidelity term makes the textbook "optimum" beatable. Two recent
+threads (full methodology and honest verdicts in [`docs/ROADMAP.md`](docs/ROADMAP.md)
+and the `.rnd/` campaign logs):
+
+**Ballistic capture at the Moon (CR3BP).** A hand-rolled differentiable
+circular-restricted three-body engine (rotating Earth–Moon frame, Jacobi constant
+conserved to ~1e-7), the stable manifold of an L2 Lyapunov orbit computed from its
+monodromy matrix (symplectic, det = 1), and a manifold-seeded transfer that arrives
+*captured* at the Moon — Moon-relative energy < 0, staying bound for multiple
+revolutions with **no capture burn** — where a naive departure-burn search finds
+none.
+
+<p align="center">
+  <img src="docs/media/cr3bp_capture.png" width="860" alt="L2 stable manifold funnelling onto the Moon and a ballistic capture arc into a bound lunar orbit"/>
+  <br/>
+  <img src="docs/media/cr3bp_capture.gif" width="360" alt="the capture arc animated into its bound lunar revolutions"/>
+</p>
+
+**Beating a J2-aware optimum.** For a RAAN (orbital-plane) change, the textbook
+impulsive plane change is J2-*blind* — but J2 oblateness precesses the node for free.
+A diff-sim policy minimizing true Δv over J2-on dynamics *discovers* that diving to a
+lower altitude speeds the nodal drift, reaching the target node for less Δv than the
+plane change costs. Measured against the **fair** baseline — passive J2 (just coast,
+let the node drift, clean up the residual), not the J2-blind strawman — the beat
+grows with the node angle: ~12% at 30°, **55–69% at 60–90°**.
+
+<p align="center">
+  <img src="docs/media/j2_beat.png" width="960" alt="the policy dives to speed J2 nodal drift, reaches the target node passive falls short of, and the beat grows with node angle"/>
+</p>
+
+These are the honest positives at the frontier. The idealizations (CR3BP vs real
+JPL ephemerides; idealized impulsive-per-step low-thrust Δv) and the regimes where
+the beat vanishes (small node angles, budgets so long passive is free) are recorded
+per build — no claim outruns its verification.
+
 ## Quickstart
 
 ```bash
@@ -155,6 +193,7 @@ uv run --with jax python scripts/verify_probe.py models/<ckpt>.npz
 # regenerate the README figures
 uv run --with jax --with matplotlib --with pillow python scripts/viz_readme.py models/<ckpt>.npz <logdir>
 uv run --with jax --with matplotlib --with pillow python scripts/viz_readme_extra.py  # progression / weights / generalization / learning gif
+uv run --with jax --with matplotlib --with pillow python scripts/viz_tier3.py          # CR3BP capture + J2-beat frontier (no checkpoint needed)
 ```
 
 Checkpoints and run logs are not committed (they regenerate by training);
