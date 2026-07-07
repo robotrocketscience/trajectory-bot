@@ -164,12 +164,12 @@ let the node drift, clean up the residual), not the J2-blind strawman — the be
 grows with the node angle: ~12% at 30°, **55–69% at 60–90°**.
 
 <p align="center">
-  <img src="docs/media/j2_beat.png" width="960" alt="the policy dives to speed J2 nodal drift, reaches the target node passive falls short of, and the beat grows with node angle"/>
+  <img src="docs/media/j2_beat.png" width="960" alt="the policy dives to speed J2 nodal drift, reaches the target node that passive falls short of, and the beat grows with node angle"/>
 </p>
 
 These are the honest positives at the frontier. The idealizations (CR3BP vs real
 JPL ephemerides; idealized impulsive-per-step low-thrust Δv) and the regimes where
-the beat vanishes (small node angles, budgets so long passive is free) are recorded
+the beat vanishes (small node angles, budgets so long that passive is free) are recorded
 per build — no claim outruns its verification.
 
 ## Quickstart
