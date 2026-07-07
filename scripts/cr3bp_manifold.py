@@ -83,9 +83,6 @@ def half_period_crossing(s0, dt):
     """Integrate until y returns to 0 (from +); linear-interp the crossing state & time."""
     s = s0.copy()
     t = 0.0
-    y_prev = s[1]
-    s_prev = s.copy()
-    # step off the y=0 axis first
     for _ in range(20_000_000):
         s_new = rk4_np(s, dt)
         t_new = t + dt
@@ -93,7 +90,6 @@ def half_period_crossing(s0, dt):
             frac = s[1] / (s[1] - s_new[1])       # fraction to y=0
             s_cross = s + frac * (s_new - s)
             return s_cross, t + frac * dt
-        s_prev, y_prev = s, s[1]
         s, t = s_new, t_new
     raise RuntimeError("no y=0 crossing found")
 
