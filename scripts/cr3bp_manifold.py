@@ -404,6 +404,74 @@ def run_capture(args):
         print(f"    → {verdict}")
 
 
+R_EARTH = np.array([-MU, 0.0, 0.0])
+
+
+def earth_dist(S):
+    return np.sqrt((S[..., 0] - R_EARTH[0]) ** 2 + S[..., 1] ** 2 + S[..., 2] ** 2)
+
+
+def earth_rel_inertial_speed(S):
+    """Inertial speed relative to (moving) Earth: v_sc_inertial − v_earth_inertial,
+    v_sc_inertial = (vx−y, vy+x, vz), v_earth_inertial = ω×r_earth = (0,−μ,0)."""
+    vxi = S[..., 3] - S[..., 1]
+    vyi = S[..., 4] + S[..., 0] + MU
+    vzi = S[..., 5]
+    return np.sqrt(vxi ** 2 + vyi ** 2 + vzi ** 2)
+
+
+def run_transfer(args):
+    print("=== R-H4: Earth-connection of the captured manifold + honest Δv ===")
+    lp = C.lagrange_points()
+    v_unit = C.L_UNIT_KM / C.T_UNIT_S
+    reached_leo = False
+    for name, Ax in (("L1", args.ax_l1), ("L2", args.ax_l2)):
+        s0, T, N, orbit, M, v_s, lam, w, res = orbit_and_monodromy(lp[name], Ax, args.dt)
+        ics, labels = manifold_ics(s0, N, v_s, args.n_seed, args.pos_disp, args.dt)
+        n_far = int(round(args.t_far / args.dt))
+        traj = propagate_batch(ics, -args.dt, n_far, record_every=args.rec_every)
+        best = None
+        n_cap = 0
+        perigees = []
+        for k in range(ics.shape[0]):
+            tk = traj[:, k, :]
+            dM, spM, EM = moon_rel_np(tk)
+            jM = int(np.argmin(dM))
+            if not (dM.min() < R_HILL and EM[jM] < 0.0):
+                continue                          # only trajectories that get captured
+            n_cap += 1
+            re = earth_dist(tk)
+            jp = int(np.argmin(re))
+            rp = re[jp]
+            perigees.append(rp)
+            v_sc = earth_rel_inertial_speed(tk[jp])
+            v_circ = np.sqrt((1.0 - MU) / max(rp, 1e-9))
+            inj = abs(v_sc - v_circ)              # tangential injection from circular
+            if best is None or rp < best["rp"]:
+                best = {"rp": float(rp), "inj": float(inj), "v_sc": float(v_sc),
+                        "v_circ": float(v_circ)}
+        perigees = np.array(perigees)
+        print(f"  {name} (Ax={Ax:.3f}): {n_cap} capturing trajectories traced back "
+              f"{args.t_far:.0f} nondim (~{args.t_far*C.T_UNIT_S/86400:.0f} d)")
+        if not len(perigees):
+            print("    no capturing trajectory in this trace window.")
+            continue
+        print(f"    Earth-perigee of captured set: min {perigees.min()*C.L_UNIT_KM:.0f} km, "
+              f"median {np.median(perigees)*C.L_UNIT_KM:.0f} km (LEO≈6800 km)")
+        rp_km = best["rp"] * C.L_UNIT_KM
+        print(f"    closest-to-Earth: perigee {rp_km:.0f} km; if injected there "
+              f"v_manifold={best['v_sc']*v_unit:.3f} vs v_circ={best['v_circ']*v_unit:.3f} "
+              f"→ injection {best['inj']*v_unit:.3f} km/s")
+        if rp_km < 12000:
+            reached_leo = True
+    if not reached_leo:
+        print("  → NEITHER the L1 nor L2 pure-CR3BP manifold descends to LEO (perigees "
+              "≫ LEO). As pre-registered (assumption #3), bridging to LEO needs a lunar "
+              "flyby or the Sun's 4-body term (exactly how flown WSB transfers, e.g. "
+              "Hiten, work). HONEST NULL on the Δv beat; H's deliverable is the verified "
+              "capture (R-H3) + the manifold engine (R-H1/H2), not a claimed transfer win.")
+
+
 def run_orbit(args):
     print("=== R-H1: Lyapunov orbits via differential correction ===")
     lp = C.lagrange_points()
@@ -429,6 +497,8 @@ def main():
     ap.add_argument("--orbit", action="store_true", help="R-H1: Lyapunov orbits")
     ap.add_argument("--manifold", action="store_true", help="R-H2: monodromy + manifold")
     ap.add_argument("--capture", action="store_true", help="R-H3: capture sweep")
+    ap.add_argument("--transfer", action="store_true", help="R-H4: Earth-connection + Δv")
+    ap.add_argument("--t-far", type=float, default=20.0)     # long backward trace to Earth
     ap.add_argument("--dt", type=float, default=1e-4)
     ap.add_argument("--ax-l1", type=float, default=0.02)
     ap.add_argument("--ax-l2", type=float, default=0.02)
@@ -447,6 +517,8 @@ def main():
         run_manifold(args)
     if args.capture:
         run_capture(args)
+    if args.transfer:
+        run_transfer(args)
 
 
 if __name__ == "__main__":
