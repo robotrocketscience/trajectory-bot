@@ -66,6 +66,9 @@ def compute_capture(Ax=0.02, dt=1e-4, n_seed=40, pos_disp=1e-4, t_prop=6.0,
             if E[j] < 0.0 and (best is None or E[j] < best["E"]):
                 best = {"k": k, "E": float(E[j]), "d": float(d[j]),
                         "s_ca": tk[j].copy(), "arc": tk[:j + 1].copy()}
+    if best is None:
+        raise RuntimeError("no ballistic capture found for these manifold params — "
+                           "widen n_seed/pos_disp/t_prop (defaults reproduce Build H R-H3)")
     bound = M.propagate_batch(best["s_ca"][None, :], dt, verify_steps,
                               record_every=rec)[:, 0, :]
     d_b = np.linalg.norm(bound[:, 0:3] - M.R_MOON, axis=1)
