@@ -238,6 +238,22 @@ correct baseline; using Hohmann everywhere would handicap the agent.
     fallback); low-thrust Δv is idealized (per-step impulses). Net: the method *can* beat a
     J2-aware optimum, but the margin is small and regime-specific — not the clean large beat
     R-K1 prematurely implied.
+    **Build L — the 5-12% was a FLOOR: the J2 beat GROWS to 55-69% at large node changes**
+    (`scripts/j2_policy.py` extended; `.rnd/campaign-2026-07-07-j2-eccentric-sweep.md`).
+    H-L1 SUPPORTED: at fixed ~80%-passive-coverage budgets the active-beats-passive ratio
+    is 0.876 / 0.449 / 0.313 for ΔΩ = 30 / 60 / 90° — the active Δv stays ~flat (~0.55, just
+    dive a little and let J2 do more over a longer budget) while passive's residual plane
+    change grows super-linearly. So for operationally-relevant large node changes diff-sim
+    active drift-shaping beats passive-J2 by more than half. H-L2 REFUTED: eccentricity does
+    NOT help (ratio 1.00 vs circular 0.88) — a valid eccentric orbit (periapsis above the
+    atmosphere) forces a large a0 that slows the drift, cheapens the residual plane change,
+    and makes the active altitude lever expensive; you can't have a tight fast-drifting orbit
+    AND high e. H-L3 / correction: Build K's "T=6 d wasteful local min below passive" was an
+    **adam best-tracking off-by-one bug** (best_x saved one step after best_loss), not
+    physics — fixed, the optimizer never underperforms passive (T=6 d → 0.999 across all
+    starts). Honesty guards added: eccentric-drift check vs Vallado (1-e²)⁻² (caught an
+    a0-fixed setup that plunged periapsis 863 km sub-surface), bi-elliptic-aware baseline
+    (steel-mans plane change above ~49°), best-stopping-time passive baseline.
 12. **Earth–Mars transfer + capture** (heliocentric). Baseline: heliocentric Hohmann /
     porkchop optimum; explore gravity assists.
 13. **Gravity assist / flyby** as a maneuver primitive.
