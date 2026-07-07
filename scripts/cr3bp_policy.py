@@ -105,8 +105,10 @@ def verify_capture_jax(state, dt, steps):
     d = np.linalg.norm(xs[:, 0:3] - rmoon, axis=1)
     out = np.where(d > R_HILL)[0]
     left = out[0] if len(out) else len(d)
+    if left <= 1:                              # started outside the Hill sphere → no capture
+        return left * dt, 0.0
     ang = np.unwrap(np.arctan2(xs[:left, 1] - rmoon[1], xs[:left, 0] - rmoon[0]))
-    revs = abs(ang[-1] - ang[0]) / (2 * np.pi) if left > 1 else 0.0
+    revs = abs(ang[-1] - ang[0]) / (2 * np.pi)
     return left * dt, revs
 
 
@@ -210,7 +212,6 @@ def main():
     ap.add_argument("--box", type=float, default=0.02)
     ap.add_argument("--iters", type=int, default=400)
     ap.add_argument("--lr", type=float, default=3e-3)
-    ap.add_argument("--seed-ang", type=float, default=220.0)   # scan-best departure angle
     ap.add_argument("--seed-ins", type=float, default=0.5)     # insertion-burn seed magnitude
     ap.add_argument("--verify-steps", type=int, default=8000)
     args = ap.parse_args()
