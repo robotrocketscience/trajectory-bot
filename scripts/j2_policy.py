@@ -207,14 +207,16 @@ def adam(grad_fn, x0, steps, lr, log_every=100, clip=1.0, lr_final_frac=0.02):
 def passive_best(s0, dt, n, tgt, r_boost):
     """Best PASSIVE-J2 cost: coast (zero control) and let J2 drift the node; the cheapest
     strategy is to stop whenever the cleanup-to-target is minimal (handles overshoot — if
-    free drift reaches the target mid-coast, stop there for ~0). Returns min over t∈[0,T]."""
-    def step(rv, _):
-        rv2 = rk4(rv, dt)
-        a, e, inc, raan, _ = elements(rv2)
-        return rv2, cleanup_dv(a, e, inc, raan, tgt, r_boost)
-    _, cl = lax.scan(step, s0, None, length=n)
+    free drift reaches the target mid-coast, stop there for ~0). Running min over t∈[0,T]
+    (carried in the scan, so no n-length array is materialised for long horizons)."""
     cl0 = cleanup_dv(*elements(s0)[:4], tgt, r_boost)          # include t=0
-    return float(jnp.minimum(jnp.min(cl), cl0))
+    def step(carry, _):
+        rv, best = carry
+        rv2 = rk4(rv, dt)
+        cl = cleanup_dv(*elements(rv2)[:4], tgt, r_boost)
+        return (rv2, jnp.minimum(best, cl)), None
+    (_, best), _ = lax.scan(step, (s0, cl0), None, length=n)
+    return float(best)
 
 
 # ---------- scenarios ----------
@@ -224,10 +226,14 @@ def scenario(args):
     periapsis never drops sub-surface. Reduces to circular a0=R+alt at e0=0."""
     a0 = (R_BODY + args.alt) / (1.0 - args.e0)
     s0 = jnp.asarray(orbit_state(a0, args.e0, args.inc, 0.0))
+    # J2 regresses the node westward for prograde (i<90°), eastward for retrograde. Orient
+    # the target ΔΩ along that direction so --draan is a MAGNITUDE and passive drift moves
+    # TOWARD the target (fighting J2 would collapse the passive baseline to t=0).
+    draan_signed = -np.sign(np.cos(np.radians(args.inc))) * abs(args.draan)
     tgt = (float(a0), float(args.e0), float(np.radians(args.inc)),
-           float(np.radians(args.draan)))
-    n = int(round(args.days * DAY / args.dt))
-    return a0, s0, tgt, n
+           float(np.radians(draan_signed)))
+    n = round(args.days * DAY / args.dt)
+    return a0, s0, tgt, n, draan_signed
 
 
 def blind_plane_dv(a0, inc_deg, draan_deg, r_boost):
@@ -246,7 +252,7 @@ def blind_plane_dv(a0, inc_deg, draan_deg, r_boost):
 
 def check(args):
     print("=== R-L1: honesty guards + differentiability building block ===")
-    a0, s0, tgt, n = scenario(args)
+    a0, s0, tgt, n, draan = scenario(args)
     dt = args.dt
 
     # (1) eccentric-drift physics check: numeric nodal rate vs Vallado (1-e²)^-2 scaling
@@ -279,9 +285,9 @@ def check(args):
     print(f"  grad norm = {gn:.4e} (finite {np.isfinite(gn)}) n_steps={n} DOF={3*2*args.harm}")
 
     # (3) steel-manned J2-blind baseline: min(single, bi-elliptic) plane change
-    blind, theta, dv_si, dv_be = blind_plane_dv(a0, args.inc, args.draan, r_boost)
-    print(f"  J2-blind plane change θ={theta:.1f}°: single {dv_si:.4f} / bi-ell(boost {r_boost:.0f}) "
-          f"{dv_be:.4f} → baseline {blind:.4f} km/s")
+    blind, theta, dv_si, dv_be = blind_plane_dv(a0, args.inc, draan, r_boost)
+    print(f"  target ΔΩ={draan:+.1f}° (oriented along J2 regression) θ={theta:.1f}°: "
+          f"single {dv_si:.4f} / bi-ell(boost {r_boost:.0f}) {dv_be:.4f} → baseline {blind:.4f} km/s")
 
 
 def run_starts(gfn, shape, args):
@@ -306,26 +312,26 @@ def rng_normal(shape, seed, std):
 
 def optimize(args):
     print("=== R-L: diff-sim policy vs passive-J2 (eccentric / ΔΩ sweep / multi-start) ===")
-    a0, s0, tgt, n = scenario(args)
+    a0, s0, tgt, n, draan = scenario(args)
     dt = args.dt; r_boost = args.rboost
     gfn = jax.jit(jax.value_and_grad(
         lambda x: objective(x, s0, dt, n, args.amax, tgt, r_boost), has_aux=True))
     shape = (3, 2, args.harm)
     print(f"  scenario: a0={a0:.0f} (alt {args.alt:.0f}) e0={args.e0:.2f} i={args.inc:.1f}° "
-          f"ΔΩ={args.draan:.0f}° budget {args.days:.1f} d, n={n}, DOF={3*2*args.harm}, "
+          f"ΔΩ={draan:+.0f}° budget {args.days:.1f} d, n={n}, DOF={3*2*args.harm}, "
           f"starts={args.starts+1}")
     best_x, best_loss, losses = run_starts(gfn, shape, args)
 
     total, aux = objective(jnp.asarray(best_x), s0, dt, n, args.amax, tgt, r_boost)
     dv_lt, dv_cl, a, e, inc_f, raan = [float(z) for z in aux]
     dv_total = float(total)
-    blind, theta, dv_si, dv_be = blind_plane_dv(a0, args.inc, args.draan, r_boost)
+    blind, theta, dv_si, dv_be = blind_plane_dv(a0, args.inc, draan, r_boost)
     passive = passive_best(s0, dt, n, tgt, r_boost)
     raan_err = abs(np.degrees(float(ang_wrap(jnp.asarray(raan - tgt[3])))))
     print("\n  --- VERIFY (best of multi-start) ---")
     print(f"  reached: a={a:.1f} (tgt {a0:.1f}) e={e:.5f} (tgt {args.e0:.2f}) "
           f"i={np.degrees(inc_f):.3f}° (tgt {args.inc:.1f}) RAAN={np.degrees(raan):.3f}° "
-          f"(tgt {args.draan:.1f}, residual {raan_err:.3f}°)")
+          f"(tgt {draan:+.1f}, residual {raan_err:.3f}°)")
     print(f"  policy total Δv = {dv_total:.4f} km/s (lt {dv_lt:.4f} + cleanup {dv_cl:.4f})")
     print(f"  start-spread total Δv across {len(losses)} starts: "
           f"min {min(losses):.4f} / max {max(losses):.4f}")
