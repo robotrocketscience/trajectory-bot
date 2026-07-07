@@ -62,12 +62,18 @@ def rk4(rv, dt):
 
 # ---------- orbit helpers ----------
 def circular_state(alt, inc_deg, raan_deg=0.0):
-    a = R_BODY + alt
-    v = np.sqrt(MU / a)
+    return orbit_state(R_BODY + alt, 0.0, inc_deg, raan_deg)
+
+
+def orbit_state(a, e, inc_deg, raan_deg=0.0):
+    """State at periapsis (argument of periapsis = 0, so periapsis at the ascending node)
+    for an orbit of semi-major a, eccentricity e, inclination, RAAN. e=0 → circular."""
+    r_p = a * (1.0 - e)
+    v_p = np.sqrt(MU * (1.0 + e) / (a * (1.0 - e)))
     inc, raan = np.radians(inc_deg), np.radians(raan_deg)
-    r = a * np.array([np.cos(raan), np.sin(raan), 0.0])
+    r = r_p * np.array([np.cos(raan), np.sin(raan), 0.0])
     vdir = np.array([-np.sin(raan) * np.cos(inc), np.cos(raan) * np.cos(inc), np.sin(inc)])
-    return np.concatenate([r, v * vdir])
+    return np.concatenate([r, v_p * vdir])
 
 
 def elements(rv):
@@ -124,26 +130,42 @@ def orbit_normal(inc, raan):
                       -jnp.sin(inc) * jnp.cos(raan), jnp.cos(inc)])
 
 
-def cleanup_dv(a, e, inc, raan, tgt):
-    """Impulsive Δv estimate to correct the terminal residual to the EXACT target
-    (circular, a0, inc0, raan_t). Prices any shortfall so the comparison is fair:
-      - energy/altitude: |v_circ(a) − v_circ(a0)|  (= two-burn Hohmann cost to first
-        order in the radius residual; exact to O((Δa/a)²), which is <1% here since the
-        beats leave |Δa| < ~230 km, ε≈0.03)
-      - eccentricity:    v_circ(a)·e  (impulse to null residual e)
-      - plane (i+RAAN):  2 v_circ(a0) sin(Δγ/2), Δγ = angle between orbit normals.
-    Summed sequentially (no burn-sharing credited) — a tight, mildly conservative
-    estimate of the true correction cost for the small residuals seen here."""
-    a0, inc0, raan_t = tgt
+def plane_change_dv(dg, a0, r_boost):
+    """Δv to rotate the orbit plane by angle dg at semi-major a0, taking the cheaper of:
+      - single impulse: 2 v_c0 sin(dg/2)   (optimal for small dg)
+      - 3-burn BI-ELLIPTIC: raise apoapsis to r_boost, rotate where v is small, return
+        (optimal above ~49°). J2-blind either way.
+    Differentiable in dg; the min steel-mans the baseline at LARGE node changes."""
+    vc0 = jnp.sqrt(MU / a0)
+    dv_single = 2.0 * vc0 * jnp.sin(dg / 2.0)
+    at = 0.5 * (a0 + r_boost)
+    v_p = jnp.sqrt(MU * (2.0 / a0 - 1.0 / at))
+    v_a = jnp.sqrt(MU * (2.0 / r_boost - 1.0 / at))
+    dv_be = 2.0 * jnp.abs(v_p - vc0) + 2.0 * v_a * jnp.sin(dg / 2.0)
+    return jnp.minimum(dv_single, dv_be)
+
+
+def cleanup_dv(a, e, inc, raan, tgt, r_boost=42164.0):
+    """Impulsive Δv estimate to correct the terminal residual to the EXACT target orbit
+    (a0, e0, inc0, raan_t). Prices any shortfall so the comparison is fair:
+      - energy/altitude: |v_circ(a) − v_circ(a0)|  (two-burn Hohmann cost to first order
+        in the radius residual; exact to O((Δa/a)²))
+      - eccentricity:    v_circ(a)·|e − e0|  (impulse to restore e0)
+      - plane (i+RAAN):  min(single-impulse, bi-elliptic) plane change over Δγ = angle
+        between orbit normals — steel-manned so large-Δγ residuals aren't over-priced.
+    Summed sequentially (no burn-sharing credited)."""
+    a0, e0, inc0, raan_t = tgt
     vc0 = jnp.sqrt(MU / a0); vcf = jnp.sqrt(MU / a)
     dv_a = jnp.sqrt((vcf - vc0) ** 2 + 1e-12)
-    dv_e = vcf * e
+    dv_e = vcf * jnp.abs(e - e0)
     cg = jnp.clip(orbit_normal(inc, raan) @ orbit_normal(inc0, raan_t), -1.0, 1.0)
-    dv_plane = vc0 * jnp.sqrt(jnp.maximum(2.0 * (1.0 - cg), 0.0) + 1e-12)  # =2v sin(Δγ/2)
+    hav = jnp.sqrt(jnp.maximum(2.0 * (1.0 - cg), 0.0) + 1e-12)   # = 2 sin(Δγ/2), smooth at 0
+    dgamma = 2.0 * jnp.arcsin(jnp.clip(hav / 2.0, 0.0, 1.0))     # Δγ, gradient-safe near 0
+    dv_plane = plane_change_dv(dgamma, a0, r_boost)
     return dv_a + dv_e + dv_plane
 
 
-def objective(coeffs, s0, dt, n, a_max, tgt):
+def objective(coeffs, s0, dt, n, a_max, tgt, r_boost=42164.0):
     """True total mission Δv = low-thrust Δv + impulsive cleanup to the exact target.
     No penalty weights: every residual is priced, so the optimizer minimizes the real
     quantity and trades J2-drift shaping against the plane-change it avoids."""
@@ -151,34 +173,8 @@ def objective(coeffs, s0, dt, n, a_max, tgt):
     rvT = rollout_rtn(a_rtn, s0, dt)
     a, e, inc, raan, _ = elements(rvT)
     dv_lt = jnp.sum(jnp.sqrt(jnp.sum(a_rtn ** 2, axis=1) + 1e-20)) * dt   # ∫|a|dt
-    dv_cl = cleanup_dv(a, e, inc, raan, tgt)
+    dv_cl = cleanup_dv(a, e, inc, raan, tgt, r_boost)
     return dv_lt + dv_cl, (dv_lt, dv_cl, a, e, inc, raan)
-
-
-# ---------- J2-blind analytic baselines (steel-manned) ----------
-def single_impulse_plane(alt, inc_deg, draan_deg):
-    a = R_BODY + alt; v = np.sqrt(MU / a)
-    inc, dO = np.radians(inc_deg), np.radians(draan_deg)
-    cth = np.cos(inc) ** 2 + np.sin(inc) ** 2 * np.cos(dO)
-    theta = np.arccos(np.clip(cth, -1, 1))
-    return 2 * v * np.sin(theta / 2), np.degrees(theta)
-
-
-def bielliptic_plane(alt, inc_deg, draan_deg, r_boost):
-    """Raise apoapsis to r_boost, rotate the plane there (cheap, low v), return.
-    3 burns: raise, plane-rotate at apoapsis, lower. J2-blind. Returns (Δv, period_days)."""
-    a0 = R_BODY + alt
-    _, theta = single_impulse_plane(alt, inc_deg, draan_deg)
-    th = np.radians(theta)
-    at = 0.5 * (a0 + r_boost)                       # transfer ellipse
-    v_p0 = np.sqrt(MU / a0)                          # circ speed at a0
-    v_p = np.sqrt(MU * (2.0 / a0 - 1.0 / at))       # peri speed on transfer
-    v_a = np.sqrt(MU * (2.0 / r_boost - 1.0 / at))  # apo speed on transfer
-    dv_raise = abs(v_p - v_p0)
-    dv_rot = 2 * v_a * np.sin(th / 2)               # plane rotation at slow apoapsis
-    dv_lower = abs(v_p - v_p0)                       # symmetric return
-    period = 2 * np.pi * np.sqrt(at ** 3 / MU)       # one transfer ellipse period
-    return dv_raise + dv_rot + dv_lower, period / DAY
 
 
 # ---------- Adam ----------
@@ -207,96 +203,144 @@ def adam(grad_fn, x0, steps, lr, log_every=100, clip=1.0, lr_final_frac=0.02):
     return best_x, best_loss
 
 
+# ---------- passive-J2 baseline (best stopping time) ----------
+def passive_best(s0, dt, n, tgt, r_boost):
+    """Best PASSIVE-J2 cost: coast (zero control) and let J2 drift the node; the cheapest
+    strategy is to stop whenever the cleanup-to-target is minimal (handles overshoot — if
+    free drift reaches the target mid-coast, stop there for ~0). Returns min over t∈[0,T]."""
+    def step(rv, _):
+        rv2 = rk4(rv, dt)
+        a, e, inc, raan, _ = elements(rv2)
+        return rv2, cleanup_dv(a, e, inc, raan, tgt, r_boost)
+    _, cl = lax.scan(step, s0, None, length=n)
+    cl0 = cleanup_dv(*elements(s0)[:4], tgt, r_boost)          # include t=0
+    return float(jnp.minimum(jnp.min(cl), cl0))
+
+
 # ---------- scenarios ----------
+def scenario(args):
+    """Build the start state, target tuple, and step count from args (circular or eccentric).
+    --alt is the PERIAPSIS altitude (kept fixed & valid across e0); a0 grows with e0 so
+    periapsis never drops sub-surface. Reduces to circular a0=R+alt at e0=0."""
+    a0 = (R_BODY + args.alt) / (1.0 - args.e0)
+    s0 = jnp.asarray(orbit_state(a0, args.e0, args.inc, 0.0))
+    tgt = (float(a0), float(args.e0), float(np.radians(args.inc)),
+           float(np.radians(args.draan)))
+    n = int(round(args.days * DAY / args.dt))
+    return a0, s0, tgt, n
+
+
+def blind_plane_dv(a0, inc_deg, draan_deg, r_boost):
+    """J2-blind plane-change baseline at semi-major a0: min(single-impulse, bi-elliptic)."""
+    inc, dO = np.radians(inc_deg), np.radians(draan_deg)
+    cth = np.cos(inc) ** 2 + np.sin(inc) ** 2 * np.cos(dO)
+    theta = float(np.arccos(np.clip(cth, -1, 1)))
+    vc0 = np.sqrt(MU / a0)
+    dv_single = 2 * vc0 * np.sin(theta / 2)
+    at = 0.5 * (a0 + r_boost)                                   # pure 3-burn bi-elliptic
+    v_p = np.sqrt(MU * (2.0 / a0 - 1.0 / at))
+    v_a = np.sqrt(MU * (2.0 / r_boost - 1.0 / at))
+    dv_be = 2 * abs(v_p - vc0) + 2 * v_a * np.sin(theta / 2)
+    return min(dv_single, dv_be), np.degrees(theta), dv_single, dv_be
+
+
 def check(args):
-    print("=== R-K2a: differentiability + solvability building block ===")
-    alt, inc, draan = args.alt, args.inc, args.draan
-    T = args.days * DAY
+    print("=== R-L1: honesty guards + differentiability building block ===")
+    a0, s0, tgt, n = scenario(args)
     dt = args.dt
-    n = int(round(T / dt))
-    s0 = jnp.asarray(circular_state(alt, inc, 0.0))
-    tgt = (float(R_BODY + alt), float(np.radians(inc)), float(np.radians(draan)))
 
-    # (1) free coast: how much does the node drift for free at this altitude/budget?
-    c0 = jnp.zeros((3, 2, args.harm))
-    a_rtn0 = rtn_profile(c0, n, args.amax)
-    rvT = rollout_rtn(a_rtn0, s0, dt)
-    a, e, inc_f, raan, _ = [np.asarray(z) for z in elements(rvT)]
-    print(f"  free coast {args.days:.1f} d @ {alt:.0f} km: RAAN drift "
-          f"{np.degrees(raan):.3f}° (target {draan:.0f}°), a={a:.1f} e={e:.5f}")
-    print(f"  → free-coast cleanup-to-target Δv = "
-          f"{float(cleanup_dv(*elements(rvT)[:4], tgt)):.4f} km/s (the do-nothing cost)")
+    # (1) eccentric-drift physics check: numeric nodal rate vs Vallado (1-e²)^-2 scaling
+    def coast_raan(sv, steps):
+        def st(rv, _):
+            rv2 = rk4(rv, dt)
+            return rv2, elements(rv2)[3]
+        _, oms = lax.scan(st, sv, None, length=steps)
+        return np.unwrap(np.concatenate([[float(elements(sv)[3])], np.asarray(oms)]))
+    revs = 12
+    n_orbit = 2 * np.pi * np.sqrt(a0 ** 3 / MU)
+    steps = int(round(revs * n_orbit / dt))
+    oms = coast_raan(s0, steps)
+    rate_num = np.polyfit(np.arange(len(oms)) * dt, oms, 1)[0] * 86400 * 180 / np.pi
+    incr = np.radians(args.inc)
+    nmm = np.sqrt(MU / a0 ** 3)
+    p = a0 * (1 - args.e0 ** 2)
+    rate_val = -1.5 * nmm * J2 * (R_BODY / p) ** 2 * np.cos(incr) * 86400 * 180 / np.pi
+    print(f"  e0={args.e0:.2f} a0={a0:.0f} i={args.inc:.1f}°: dΩ/dt numeric {rate_num:+.3f}°/day "
+          f"vs Vallado(1-e²)⁻² {rate_val:+.3f}°/day (err {abs(rate_num-rate_val)/abs(rate_val)*100:.1f}%)")
 
-    # (2) differentiability: finite gradient, no NaN (perturb coeffs off zero)
+    # (2) free-coast do-nothing cost + differentiability
+    r_boost = args.rboost
+    pas = passive_best(s0, dt, n, tgt, r_boost)
+    print(f"  passive-J2 best cost over {args.days:.1f} d = {pas:.4f} km/s (do-nothing)")
     gfn = jax.jit(jax.value_and_grad(
-        lambda x: objective(x, s0, dt, n, args.amax, tgt), has_aux=True))
-    c_test = 0.1 * jnp.ones((3, 2, args.harm))
-    (loss, aux), g = gfn(c_test)
-    gnorm = float(jnp.linalg.norm(g))
-    print(f"  grad norm at test-control = {gnorm:.4e}  (finite: {np.isfinite(gnorm)})  "
-          f"n_steps={n} DOF={c_test.size}")
+        lambda x: objective(x, s0, dt, n, args.amax, tgt, r_boost), has_aux=True))
+    (loss, aux), g = gfn(0.1 * jnp.ones((3, 2, args.harm)))
+    gn = float(jnp.linalg.norm(g))
+    print(f"  grad norm = {gn:.4e} (finite {np.isfinite(gn)}) n_steps={n} DOF={3*2*args.harm}")
 
-    # (3) analytic baselines
-    dv_si, theta = single_impulse_plane(alt, inc, draan)
-    dv_be, per_be = bielliptic_plane(alt, inc, draan, r_boost=R_BODY + 20000.0)
-    print(f"  J2-blind single-impulse plane change ({draan:.0f}°→θ={theta:.1f}°): "
-          f"{dv_si:.4f} km/s")
-    print(f"  J2-blind bi-elliptic (boost to 20000 km alt): {dv_be:.4f} km/s "
-          f"(1 transfer period {per_be:.2f} d)")
-    print(f"  → J2-blind baseline = min = {min(dv_si, dv_be):.4f} km/s")
+    # (3) steel-manned J2-blind baseline: min(single, bi-elliptic) plane change
+    blind, theta, dv_si, dv_be = blind_plane_dv(a0, args.inc, args.draan, r_boost)
+    print(f"  J2-blind plane change θ={theta:.1f}°: single {dv_si:.4f} / bi-ell(boost {r_boost:.0f}) "
+          f"{dv_be:.4f} → baseline {blind:.4f} km/s")
+
+
+def run_starts(gfn, shape, args):
+    """Multi-start Adam: zero init (passive basin) + N random; return best_x and the loss spread."""
+    inits = [np.zeros(shape)] + [rng_normal(shape, i, args.init_std) for i in range(args.starts)]
+    results = []
+    for j, x0 in enumerate(inits):
+        bx, bl = adam(gfn, x0, args.steps, args.lr, log_every=args.log_every, clip=args.clip)
+        results.append((bl, bx))
+        print(f"  start {j} ({'zero' if j == 0 else 'rand'}): best total Δv = {bl:.4f}")
+    results.sort(key=lambda r: r[0])
+    losses = [r[0] for r in results]
+    return results[0][1], results[0][0], losses
+
+
+def rng_normal(shape, seed, std):
+    # deterministic per-start noise (Math.random/Date unavailable-safe: seed explicitly)
+    return np.random.default_rng(1000 + seed).normal(0, std, size=shape)
 
 
 def optimize(args):
-    print("=== R-K2b: diff-sim policy vs J2-blind optimum ===")
-    alt, inc, draan = args.alt, args.inc, args.draan
-    T = args.days * DAY
-    dt = args.dt
-    n = int(round(T / dt))
-    s0 = jnp.asarray(circular_state(alt, inc, 0.0))
-    tgt = (float(R_BODY + alt), float(np.radians(inc)), float(np.radians(draan)))
+    print("=== R-L: diff-sim policy vs passive-J2 (eccentric / ΔΩ sweep / multi-start) ===")
+    a0, s0, tgt, n = scenario(args)
+    dt = args.dt; r_boost = args.rboost
     gfn = jax.jit(jax.value_and_grad(
-        lambda x: objective(x, s0, dt, n, args.amax, tgt), has_aux=True))
+        lambda x: objective(x, s0, dt, n, args.amax, tgt, r_boost), has_aux=True))
+    shape = (3, 2, args.harm)
+    print(f"  scenario: a0={a0:.0f} (alt {args.alt:.0f}) e0={args.e0:.2f} i={args.inc:.1f}° "
+          f"ΔΩ={args.draan:.0f}° budget {args.days:.1f} d, n={n}, DOF={3*2*args.harm}, "
+          f"starts={args.starts+1}")
+    best_x, best_loss, losses = run_starts(gfn, shape, args)
 
-    x0 = np.zeros((3, 2, args.harm))             # start in the free-drift basin
-    print(f"  scenario: {alt:.0f} km, i={inc:.1f}°, ΔΩ={draan:.0f}°, budget {args.days:.1f} d, "
-          f"dt={dt:.0f}s, n_steps={n}, DOF={x0.size}, a_max={args.amax:.1e} km/s²")
-    print("  objective = true total Δv (low-thrust ∫|a|dt + impulsive cleanup to exact target)")
-    best_x, best_loss = adam(gfn, x0, args.steps, args.lr,
-                             log_every=args.log_every, clip=args.clip)
-
-    # verify: re-evaluate the SAME objective on the best control (no re-derivation, so the
-    # reported numbers are bit-identical to what was optimized), then report reached state.
-    total, aux = objective(jnp.asarray(best_x), s0, dt, n, args.amax, tgt)
+    total, aux = objective(jnp.asarray(best_x), s0, dt, n, args.amax, tgt, r_boost)
     dv_lt, dv_cl, a, e, inc_f, raan = [float(z) for z in aux]
     dv_total = float(total)
-    dv_si, theta = single_impulse_plane(alt, inc, draan)
-    dv_be, per_be = bielliptic_plane(alt, inc, draan, r_boost=R_BODY + 20000.0)
-    blind = min(dv_si, dv_be)
-    # passive-J2 baseline: zero control (coast the budget), then impulsive cleanup.
-    rv_pass = rollout_rtn(rtn_profile(jnp.zeros((3, 2, args.harm)), n, args.amax), s0, dt)
-    passive = float(cleanup_dv(*elements(rv_pass)[:4], tgt))
-    raan_err = abs(np.degrees(float(ang_wrap(jnp.asarray(raan - tgt[2])))))
-    print("\n  --- VERIFY (re-flown best control) ---")
-    print(f"  low-thrust reached: a={a:.1f} (tgt {R_BODY+alt:.1f}) e={e:.5f} "
-          f"i={np.degrees(inc_f):.3f}° (tgt {inc:.1f}) RAAN={np.degrees(raan):.3f}° "
-          f"(tgt {draan:.1f}, residual {raan_err:.3f}°)")
-    print(f"  policy total Δv = {dv_total:.4f} km/s  (low-thrust {dv_lt:.4f} "
-          f"+ impulsive cleanup {dv_cl:.4f})")
-    print(f"  baseline 1 — J2-BLIND plane change = {blind:.4f} km/s "
-          f"(single {dv_si:.3f} / bi-ell {dv_be:.3f})")
-    print(f"  baseline 2 — PASSIVE-J2 (coast+clean) = {passive:.4f} km/s")
+    blind, theta, dv_si, dv_be = blind_plane_dv(a0, args.inc, args.draan, r_boost)
+    passive = passive_best(s0, dt, n, tgt, r_boost)
+    raan_err = abs(np.degrees(float(ang_wrap(jnp.asarray(raan - tgt[3])))))
+    print("\n  --- VERIFY (best of multi-start) ---")
+    print(f"  reached: a={a:.1f} (tgt {a0:.1f}) e={e:.5f} (tgt {args.e0:.2f}) "
+          f"i={np.degrees(inc_f):.3f}° (tgt {args.inc:.1f}) RAAN={np.degrees(raan):.3f}° "
+          f"(tgt {args.draan:.1f}, residual {raan_err:.3f}°)")
+    print(f"  policy total Δv = {dv_total:.4f} km/s (lt {dv_lt:.4f} + cleanup {dv_cl:.4f})")
+    print(f"  start-spread total Δv across {len(losses)} starts: "
+          f"min {min(losses):.4f} / max {max(losses):.4f}")
+    print(f"  baseline 1 — J2-BLIND = {blind:.4f} km/s (single {dv_si:.3f} / bi-ell {dv_be:.3f})")
+    print(f"  baseline 2 — PASSIVE-J2 (best stop) = {passive:.4f} km/s")
     r_blind = dv_total / blind; r_pass = dv_total / passive
-    print(f"  → vs J2-blind:  ratio {r_blind:.3f}  [{'BEAT' if r_blind < 1 else 'no beat'}] "
-          f"(partly trivial — J2-awareness alone)")
+    print(f"  → vs J2-blind:  ratio {r_blind:.3f}  [{'BEAT' if r_blind < 1 else 'no beat'}]")
     print(f"  → vs PASSIVE-J2: ratio {r_pass:.3f}  [{'BEAT' if r_pass < 1 else 'no beat'}] "
-          f"(the GENUINE test — active drift-shaping vs waiting)")
+          f"(GENUINE test)")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--optimize", action="store_true")
-    ap.add_argument("--alt", type=float, default=1500.0)
+    ap.add_argument("--alt", type=float, default=1500.0)   # altitude defining a0=R+alt
+    ap.add_argument("--e0", type=float, default=0.0)        # start (and target) eccentricity
     ap.add_argument("--inc", type=float, default=51.6)
     ap.add_argument("--draan", type=float, default=30.0)
     ap.add_argument("--days", type=float, default=5.0)
@@ -306,6 +350,9 @@ def main():
     ap.add_argument("--clip", type=float, default=10.0)
     ap.add_argument("--harm", type=int, default=8)      # Fourier harmonics per axis
     ap.add_argument("--amax", type=float, default=2e-5)  # max thrust accel km/s²
+    ap.add_argument("--rboost", type=float, default=42164.0)  # bi-elliptic boost radius (km)
+    ap.add_argument("--starts", type=int, default=3)    # random restarts (+1 zero-init)
+    ap.add_argument("--init-std", type=float, default=0.5)   # random-start coeff std
     ap.add_argument("--log-every", type=int, default=100)
     args = ap.parse_args()
     if args.check:
