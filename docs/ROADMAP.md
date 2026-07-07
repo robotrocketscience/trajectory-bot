@@ -177,7 +177,14 @@ correct baseline; using Hohmann everywhere would handicap the agent.
     2.31 km/s). The genuine low-energy CAPTURE beat is NOT yet demonstrated (that
     flyby isn't a verified bounded capture) — it remains the open frontier; next is
     capture verification + a manifold-seeded / multi-shooting search to tame the
-    chaotic long-arc gradients.
+    chaotic long-arc gradients. **Build G:** a **verified Moon-relative capture
+    criterion** (E_moon<0 + bounded-Hill-sphere propagation) + an honest two-mode
+    search (direct pay-the-capture-burn vs ballistic-drive-E<0). **Honest null:** the
+    search finds direct arrivals (best 2.585 km/s) but **no ballistic capture** — the
+    thin WSB set eludes a gradient+grid search over near-TLI departures (they all
+    arrive fast/hyperbolic). The genuine low-energy beat needs L2-manifold seeding /
+    multi-shooting — the clear next step, now on a validated engine + criterion.
+    `scripts/cr3bp_capture.py`.
 12. **Earth–Mars transfer + capture** (heliocentric). Baseline: heliocentric Hohmann /
     porkchop optimum; explore gravity assists.
 13. **Gravity assist / flyby** as a maneuver primitive.
