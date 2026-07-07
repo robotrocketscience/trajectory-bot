@@ -192,13 +192,23 @@ correct baseline; using Hohmann everywhere would handicap the agent.
     manifolds**. Seeding the search on the L2 stable manifold produces a **VERIFIED
     temporary ballistic capture** (E_moon<0, closest ~289 km, ~2 lunar revs / ~2 weeks
     bound) — the exact object G's grid found **zero** of. So manifold theory reaches
-    the thin capture set. **Boundary (honest, pre-registered null):** the pure
-    Earth–Moon CR3BP manifold does **not** descend to LEO (closest Earth perigee
-    70k–115k km), so no LEO→capture transfer *beat* is claimed — bridging that last gap
-    needs the Sun's 4-body term or a lunar flyby (how flown WSB transfers actually
-    work). **Net:** the low-energy capture is now demonstrated and reachable; the full
-    Δv-beating transfer remains the open frontier, next via a 4-body (Sun-perturbed
-    bicircular) or ephemeris model — which is the locked Tier-3 dynamics below.
+    the thin capture set. H first reported a "null" on the transfer beat, claiming the
+    manifold "doesn't reach LEO → needs the Sun" — **Build I corrects that overclaim.**
+    **Build I — the modest beat is REAL in the pure CR3BP** (`scripts/cr3bp_lowenergy.py`):
+    you don't need the manifold to reach LEO — you PATCH onto it near the Moon. A
+    two-impulse LEO→manifold→ballistic-capture transfer, compared to a **steel-manned**
+    Hohmann+minimal-capture to the *same* verified captured state, **beats it by ~5%
+    (0.18 km/s), dt-robust** — but only for a *temporary* (2.4-rev / ~17-day) capture
+    into a *loose high* lunar orbit (periapsis ~12,400 km), saving on the **capture
+    side only** (TLI unchanged; no Sun to lower perigee). En route a G-style
+    self-deception was caught + removed (an unguarded "beats 0.74×" that was
+    sub-lunar-surface collision artifacts + a flyby-vs-real-capture asymmetry; the fix
+    was excluding sub-surface plunges and requiring the manifold's "free capture" to
+    clear the *same* K≥2-rev bar Hohmann's paid capture does). **Net:** the low-energy
+    capture is demonstrated AND yields a small honest Δv beat; the Sun is needed for the
+    **big** wins (permanent capture, capture into high orbits where Hohmann's capture
+    burn is large, and a lower TLI), next via a 4-body (Sun-perturbed bicircular) or the
+    locked ephemeris N-body model below.
 12. **Earth–Mars transfer + capture** (heliocentric). Baseline: heliocentric Hohmann /
     porkchop optimum; explore gravity assists.
 13. **Gravity assist / flyby** as a maneuver primitive.
