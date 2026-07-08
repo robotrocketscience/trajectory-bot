@@ -145,9 +145,9 @@ Two recent threads (full methodology and honest verdicts in
 circular-restricted three-body engine (rotating Earth–Moon frame, Jacobi constant
 conserved to ~1e-7), the stable manifold of an L2 Lyapunov orbit computed from its
 monodromy matrix (symplectic, det = 1), and a manifold-seeded transfer that arrives
-*captured* at the Moon — Moon-relative energy < 0, staying bound for several
-revolutions (verified at dt = 5e-5) with **no capture burn** — where a naive
-departure-burn search finds none.
+*captured* at the Moon — Moon-relative energy < 0, staying bound for **4.6 lunar
+revolutions** (~26 days, verified at dt = 5e-5) with **no capture burn** — where a
+naive departure-burn search finds none.
 
 <p align="center">
   <img src="docs/media/cr3bp_capture.png" width="860" alt="L2 stable manifold funnelling onto the Moon and a ballistic capture arc into a bound lunar orbit"/>
@@ -160,12 +160,12 @@ textbook impulsive plane change is J2-*blind* — but J2 oblateness precesses th
 for free, faster at lower altitude. A diff-sim policy minimizing true Δv over J2-on
 dynamics, with no maneuver structure baked in, **rediscovers the operational phasing
 technique**: dive to a lower altitude, let the node drift faster, return. It reaches
-the target node for a quarter to a half the Δv of naive passive waiting at large node
-angles — and lands within ~10–15% of an *analytic* optimization of that same
-dive-drift strategy (which is slightly cheaper still). So this is autonomous
-rediscovery of a known technique from the raw objective, **not a novel beat** — the
-same genre as the agent rediscovering the raise-to-plane-change trick elsewhere in the
-project.
+the target node for ~0.88× the Δv of naive passive waiting at 30°, falling to a
+quarter–half at 60–90° (the bigger the node change, the more the dive pays) — and
+lands within ~10–15% of an *analytic* optimization of that same dive-drift strategy
+(which is slightly cheaper still). So this is autonomous rediscovery of a known
+technique from the raw objective, **not a novel beat** — the same genre as the agent
+rediscovering the raise-to-plane-change trick elsewhere in the project.
 
 <p align="center">
   <img src="docs/media/j2_beat.png" width="960" alt="the policy dives to speed J2 nodal drift, reaches the target node passive falls short of, and matches the analytic dive optimum well under passive"/>
@@ -173,7 +173,7 @@ project.
 
 These are the honest positives at the frontier, with the deflations kept in view:
 the capture is in the idealized CR3BP (not real JPL ephemerides yet); the J2 result is
-a rediscovery an analytic dive beats, and its low-thrust Δv is idealized
+a rediscovery that an analytic dive beats, and its low-thrust Δv is idealized
 (impulsive-per-step). The regimes where the savings vanish (small node angles, budgets
 so long that passive is free) are recorded per build — no claim outruns its
 verification.
