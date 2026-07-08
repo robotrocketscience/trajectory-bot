@@ -137,17 +137,17 @@ seeded 1e6 gradients at every coast decision) are documented in
 ## Beyond circularize: the research frontier
 
 The same backprop-through-physics approach extends to multi-body dynamics and to
-maneuvers where a fidelity term makes the textbook "optimum" beatable. Two recent
-threads (full methodology and honest verdicts in [`docs/ROADMAP.md`](docs/ROADMAP.md)
-and the `.rnd/` campaign logs):
+maneuvers where a fidelity term the textbook ignores changes the optimal strategy.
+Two recent threads (full methodology and honest verdicts in
+[`docs/ROADMAP.md`](docs/ROADMAP.md)):
 
 **Ballistic capture at the Moon (CR3BP).** A hand-rolled differentiable
 circular-restricted three-body engine (rotating Earth–Moon frame, Jacobi constant
 conserved to ~1e-7), the stable manifold of an L2 Lyapunov orbit computed from its
 monodromy matrix (symplectic, det = 1), and a manifold-seeded transfer that arrives
-*captured* at the Moon — Moon-relative energy < 0, staying bound for multiple
-revolutions with **no capture burn** — where a naive departure-burn search finds
-none.
+*captured* at the Moon — Moon-relative energy < 0, staying bound for several
+revolutions (verified at dt = 5e-5) with **no capture burn** — where a naive
+departure-burn search finds none.
 
 <p align="center">
   <img src="docs/media/cr3bp_capture.png" width="860" alt="L2 stable manifold funnelling onto the Moon and a ballistic capture arc into a bound lunar orbit"/>
@@ -155,22 +155,28 @@ none.
   <img src="docs/media/cr3bp_capture.gif" width="360" alt="the capture arc animated into its bound lunar revolutions"/>
 </p>
 
-**Beating a J2-aware optimum.** For a RAAN (orbital-plane) change, the textbook
-impulsive plane change is J2-*blind* — but J2 oblateness precesses the node for free.
-A diff-sim policy minimizing true Δv over J2-on dynamics *discovers* that diving to a
-lower altitude speeds the nodal drift, reaching the target node for less Δv than the
-plane change costs. Measured against the **fair** baseline — passive J2 (just coast,
-let the node drift, clean up the residual), not the J2-blind strawman — the beat
-grows with the node angle: ~12% at 30°, **55–69% at 60–90°**.
+**Rediscovering J2 nodal-drift phasing.** For a RAAN (orbital-plane) change, the
+textbook impulsive plane change is J2-*blind* — but J2 oblateness precesses the node
+for free, faster at lower altitude. A diff-sim policy minimizing true Δv over J2-on
+dynamics, with no maneuver structure baked in, **rediscovers the operational phasing
+technique**: dive to a lower altitude, let the node drift faster, return. It reaches
+the target node for a quarter to a half the Δv of naive passive waiting at large node
+angles — and lands within ~10–15% of an *analytic* optimization of that same
+dive-drift strategy (which is slightly cheaper still). So this is autonomous
+rediscovery of a known technique from the raw objective, **not a novel beat** — the
+same genre as the agent rediscovering the raise-to-plane-change trick elsewhere in the
+project.
 
 <p align="center">
-  <img src="docs/media/j2_beat.png" width="960" alt="the policy dives to speed J2 nodal drift, reaches the target node that passive falls short of, and the beat grows with node angle"/>
+  <img src="docs/media/j2_beat.png" width="960" alt="the policy dives to speed J2 nodal drift, reaches the target node passive falls short of, and matches the analytic dive optimum well under passive"/>
 </p>
 
-These are the honest positives at the frontier. The idealizations (CR3BP vs real
-JPL ephemerides; idealized impulsive-per-step low-thrust Δv) and the regimes where
-the beat vanishes (small node angles, budgets so long that passive is free) are recorded
-per build — no claim outruns its verification.
+These are the honest positives at the frontier, with the deflations kept in view:
+the capture is in the idealized CR3BP (not real JPL ephemerides yet); the J2 result is
+a rediscovery an analytic dive beats, and its low-thrust Δv is idealized
+(impulsive-per-step). The regimes where the savings vanish (small node angles, budgets
+so long that passive is free) are recorded per build — no claim outruns its
+verification.
 
 ## Quickstart
 
