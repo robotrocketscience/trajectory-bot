@@ -352,6 +352,20 @@ interplanetary economics. Fix = a better-conditioned formulation (collocation / 
 orbit-averaged elements Build C already validated for Edelbaum). R-N5 candidate: port `edelbaum_sim`'s
 averaged low-thrust engine onto real ephemeris gravity, where the horizon is tractable and Δv trustworthy.
 
+**Build N R-N5 — multiple-shooting (Sims-Flanagan) FIXES R-N4's method limit** (`scripts/nbody_collocation.py`;
+user-chosen direction). Node states x_k=(r,v) as decision variables, one bounded impulse per segment,
+N-body coast, continuity defects, minimize ΣΔv under defect+boundary penalties (Adam), warm-started on the
+Lambert arc. **The crux was NON-DIMENSIONALIZATION:** Adam's per-parameter step is ~lr regardless of scale,
+so raw-km node positions (O(1e8)) never moved enough to close defects (gave dvr<1 with multi-Mkm open
+defects — meaningless); rescaling nodes to canonical units (LU=AU, VU≈29.78 km/s) so they are O(1) fixed it.
+**H-N5a SUPPORTED:** defects close to ≪ Mars SOI (24–98k km) at 10×/5×/3× mean-accel — where R-N4
+single-shooting gave garbage. **H-N5b SUPPORTED (the payoff):** real MRO ephemerides give **dvr = 1.026 at
+10× (within 3% of the impulsive Lambert floor)**, rising smoothly & monotonically (1.026→1.151→1.729) as
+a_max drops — a TRUSTWORTHY finite-thrust penalty, vs R-N4's meaningless backwards 19.5→12.0 on the same
+problem. Honest residual: the very-low-thrust corner (≤2×) doesn't fully converge with plain Adam (departure
+Δv must spread over 10+ segments) — wants a true NLP solver (SLSQP/IPOPT with hard defect constraints). General
+lesson recorded: scale the state to O(1) when gradient-optimizing multi-body trajectories.
+
 ## Mission composition — stringing maneuvers together
 
 Worked example (yours): **Falcon 9 → 28.5° inclined parking orbit (KSC) → equatorial
