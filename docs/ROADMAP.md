@@ -402,7 +402,23 @@ descent through the raw field. Same long-arc single-shooting stiffness R-N5 fixe
 the flyby. Scopes R-N8: a flyby-NODE transcription (bounded turn as a boundary condition) and/or multiple-shooting
 with a node bracketing the close approach, to localize the perturbation and remove the razor-sensitivity.
 
-**Build N R-N8+ (planned) — the Hamiltonian / phase-space thread** (user direction). Two principled tools fold
+**Build N R-N8 — flyby-NODE transcription FIXES R-N7's razor-thin basin** (`scripts/nbody_flyby_node.py`).
+The fix R-N7 scoped, built and verified. Two smooth Sun-only Kepler legs patched at a node where the
+heliocentric velocity rotates by δ (|V∞| conserved, δ bounded by min-periapsis) — the flyby is an algebraic
+boundary condition, NOT a chaotic integrated close approach. Decision vars [v_dep (scaled O(1)), δ, flyby
+epoch]. **H-N8a SUPPORTED:** from the SAME 2 m/s departure perturbation that sent R-N7's single-shooting to a
+1.26e9 km miss, the node optimizer converges feasible (Δv 9.26 km/s, defects ≤0.03 AU, r_p 6.4 R_J) — the
+razor-sensitivity is gone. **H-N8b SUPPORTED:** from a direct-to-target seed with δ=0 (no turn presupposed)
+the assist EMERGES — δ grows to −126°, defects close to sub-1000 km, Δv 9.29 (vs direct ≥25.3). Honest scope:
+the problem offers a Jupiter node at a set epoch and rewards reaching it, so this is exploitation-with-emergence,
+not cold sequence discovery. **H-N8c SUPPORTED:** implied r_p=6.4 R_J clears Jupiter and matches R-N7's
+integrated flyby (6.5 R_J) — the node turn is R-N6-consistent by construction. Net: structuring the problem by
+its patched-conic/manifold geometry (bounded turn as a boundary condition) converts the razor-thin unrecoverable
+basin into a smooth landscape where gradient descent robustly finds AND holds the assist. Vindicates the
+Hamiltonian/phase-space framing. Remaining for real discovery: the discrete which-body/whether-to-flyby choice
+(Tisserand outer loop) + an optimality certificate (primer vector).
+
+**Build N R-N9+ (planned) — the Hamiltonian / phase-space thread** (user direction). Two principled tools fold
 into what's built: (a) **primer-vector extraction from the diff-sim adjoint** — reverse-mode backprop through the
 RK4 rollout IS the discrete costate, so Lawden's primer vector (|p|=1, ṗ·p̂=0 at optimal impulse times) is inside
 the gradient already computed; extracting it turns diff-sim into an optimality *certificate* for burn timing/
