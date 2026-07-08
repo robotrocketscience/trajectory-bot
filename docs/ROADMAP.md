@@ -254,6 +254,22 @@ correct baseline; using Hohmann everywhere would handicap the agent.
     starts). Honesty guards added: eccentric-drift check vs Vallado (1-e²)⁻² (caught an
     a0-fixed setup that plunged periapsis 863 km sub-surface), bi-elliptic-aware baseline
     (steel-mans plane change above ~49°), best-stopping-time passive baseline.
+    **Build M — CORRECTION: the J2 result is REDISCOVERY, not a beat**
+    (`scripts/j2_policy.py` `--analytic`; `.rnd/campaign-2026-07-07-j2-dive-baseline.md`).
+    A blind-spot pass caught that the K/L steel-man stopped one level short: a J2-aware
+    planner with a time budget doesn't just coast (passive) — the known operational move is
+    to DIVE (faster nodal drift ∝ a^−7/2), coast low, RETURN, exactly what the policy
+    "discovered". H-M: an analytic optimization of that dive-drift strategy (min over dive
+    altitude of Hohmann round-trip + residual plane change) beats the diff-sim policy by
+    **9-15%** (0.495/0.494/0.494 vs policy 0.540/0.548/0.571 at ΔΩ=30/60/90°), and gets the
+    SAME 55-69% margin over passive. So Build K/L's "first genuine beat of a physics-aware
+    optimum" was WRONG: diff-sim does NOT beat the J2-aware optimum — it REDISCOVERS the
+    dive-drift maneuver from the raw Δv objective (no structure baked in) and matches it to
+    ~10-15% (Build-E genre, like rediscovering raise-to-plane-change). The 55-69%-under-passive
+    is a property of the dive-drift STRATEGY, not of learning. Policy Δv is dt-converged
+    (0.5404 at dt=60 and dt=30). Public README + j2_beat.png corrected to the rediscovery
+    framing; cr3bp_capture.png regenerated at trusted dt=5e-5 (verified ≥2-rev capture, was a
+    1.5-rev arc at the distrusted dt=1e-4); dead `.rnd/` README reference removed.
 12. **Earth–Mars transfer + capture** (heliocentric). Baseline: heliocentric Hohmann /
     porkchop optimum; explore gravity assists.
 13. **Gravity assist / flyby** as a maneuver primitive.
