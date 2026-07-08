@@ -83,6 +83,41 @@ def energy(rv, body_pos, body_gm, soft=1.0):
     return 0.5 * jnp.sum(rv[3:] ** 2) - jnp.sum(body_gm / dist)
 
 
+# ---------- substep-interpolated dynamics (R-N2) ----------
+# R-N1's rollout held body positions constant within each RK4 step, which desyncs a close
+# geocentric orbit (a body moving ≫ the spacecraft's distance to it per step). Here the
+# bodies are evaluated at the RK4 SUBSTAGES — t (k1), t+dt/2 (k2,k3), t+dt (k4) — using the
+# ephemeris' own interpolated states, so the integrator sees continuous body motion.
+def rk4_step_interp(rv, b0, bh, b1, body_gm, dt, thrust, soft):
+    """One RK4 step with body positions b0@t, bh@t+dt/2, b1@t+dt (each (K,3))."""
+    def deriv(s, bpos):
+        return jnp.concatenate([s[3:], accel(s[:3], bpos, body_gm, soft) + thrust])
+    k1 = deriv(rv, b0)
+    k2 = deriv(rv + 0.5 * dt * k1, bh)
+    k3 = deriv(rv + 0.5 * dt * k2, bh)
+    k4 = deriv(rv + dt * k3, b1)
+    return rv + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+
+
+def rollout_interp(rv0, fine_seq, body_gm, dt, thrust_seq=None, soft=1.0):
+    """Propagate over a body series sampled at HALF-step resolution.
+    fine_seq: (2n+1, K, 3) body positions at t0, t0+dt/2, t0+dt, … Step i uses rows
+    (2i, 2i+1, 2i+2). thrust_seq: (n,3) applied acceleration (km/s^2) or None."""
+    n = (fine_seq.shape[0] - 1) // 2
+    b0 = fine_seq[0:2 * n:2]              # (n,K,3) step starts   t_i
+    bh = fine_seq[1:2 * n:2]              # (n,K,3) step midpoints t_i+dt/2
+    b1 = fine_seq[2:2 * n + 1:2]          # (n,K,3) step ends      t_i+dt
+    if thrust_seq is None:
+        thrust_seq = jnp.zeros((n, 3))
+
+    def step(rv, inp):
+        c0, ch, c1, thr = inp
+        rv2 = rk4_step_interp(rv, c0, ch, c1, body_gm, dt, thr, soft)
+        return rv2, rv2
+    rvT, traj = lax.scan(step, rv0, (b0, bh, b1, thrust_seq))
+    return rvT, traj
+
+
 # ---------- R-N1 verification (analytic, no network) ----------
 def verify(args):
     print("=== R-N1: differentiable N-body engine verification (offline) ===")
@@ -122,9 +157,17 @@ def verify(args):
     g = jax.grad(miss)(jnp.zeros(3))
     gn = float(jnp.linalg.norm(g))
     print(f"  ∂(miss)/∂(departure Δv): |grad|={gn:.4e}  finite={np.isfinite(gn)}")
-    ok = pos_err < 1e-3 and drift < 1e-4 and np.isfinite(gn) and gn > 0
+    # (5) substep-interp rollout (R-N2): with the Sun fixed, the half-step-sampled
+    # rollout_interp must reproduce the same Kepler closure as the held-per-step rollout.
+    fine = jnp.zeros((2 * n + 1, 1, 3))            # Sun at origin at every half-step
+    rvT_i, _ = rollout_interp(rv0, fine, gm, dt, soft=soft)
+    pos_err_i = float(jnp.linalg.norm(rvT_i[:3] - rv0[:3])) / a
+    print(f"  substep-interp Kepler closure: |Δr|/a={pos_err_i:.2e} "
+          f"(matches held-per-step {pos_err:.2e})")
+    ok = (pos_err < 1e-3 and drift < 1e-4 and np.isfinite(gn) and gn > 0
+          and pos_err_i < 1e-3)
     print(f"  → engine {'VERIFIED' if ok else 'FAILED'} "
-          f"(Kepler closure + energy conservation + differentiable)")
+          f"(Kepler closure + energy conservation + differentiable + substep-interp)")
 
 
 # ---------- real-ephemeris propagation (network; not in CI) ----------
