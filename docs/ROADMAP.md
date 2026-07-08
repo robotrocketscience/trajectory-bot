@@ -61,7 +61,7 @@
 - **Beat-the-textbook (the deeper optimality question below):** partially answered. On
   the *impulsive* single-body case the agent *matches* the analytic optimum (tolerance
   box ~15% headroom; `verify_probe.py` float64/dt=1 s guards any sub-baseline claim), and
-  it now *beats the naive decomposition* on the combined maneuver. The genuinely open
+  it now *beats the naive decomposition* on the combined maneuver. The open
   frontier is low-thrust (vs Edelbaum) and multi-body (Tier-3).
 
 ## Guiding principle: optimize the true objective, don't imitate the textbook
@@ -104,7 +104,7 @@ exist:
   **invariant-manifold / low-energy transfers** (the "interplanetary transport
   network") beat patched-conic Hohmann for Earth–Moon and Earth–Mars. This is
   precisely where an optimizer over the full dynamics can find things a two-body
-  analysis can't — the discovery question is genuinely open here.
+  analysis can't — the discovery question is still open here.
 
 **Takeaway:** Hohmann is the right yardstick only for the simplest single-body
 coplanar case, where we expect the agent to *match* it (a correctness check). In
@@ -212,7 +212,7 @@ correct baseline; using Hohmann everywhere would handicap the agent.
     Tier-3 capture** (`scripts/cr3bp_policy.py`): back on the primary method (backprop a
     2-burn control through the CR3BP rollout), it achieves a **dt-robust VERIFIED
     ballistic capture** (E_moon=−0.11, ~9–10 Moon revs / ~35 d bound, ~2.84 km/s) where
-    G's 1-burn search **stalled**. The enablers, honestly: the manifold/I-derived
+    G's 1-burn search **stalled**. The enablers: the manifold/I-derived
     **2-burn structure** (a 1-burn policy provably cannot capture — G's wall) plus a
     **physically-correct approach-speed objective** (naive distance/energy objectives get
     reward-hacked into deep-fast plunges — two such hacks caught and fixed). Manifold-
@@ -226,7 +226,7 @@ correct baseline; using Hohmann everywhere would handicap the agent.
     regression numerically vs Vallado (<0.5% err) and the impulsive plane-change baseline.
     R-K2 backprops a smooth low-thrust RTN-frame control (Fourier, 48 DOF, no structure
     baked in) through a J2-on rollout, minimizing TRUE total Δv (low-thrust ∫|a|dt +
-    priced impulsive cleanup to the exact target). **Crucial honesty:** the J2-*blind*
+    priced impulsive cleanup to the exact target). **Fair-baseline check:** the J2-*blind*
     impulsive plane change (2.89 km/s for -30°) is a strawman — the fair baseline is
     *passive-J2* (coast the budget, let the node drift for free, clean the residual). The
     genuine diff-sim win is ACTIVE drift-shaping (dive to speed the drift) beating PASSIVE
