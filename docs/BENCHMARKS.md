@@ -51,8 +51,9 @@ windows is in `scripts/missions.py`.
 
 Reconstructing the *flown* Δv: Horizons gives states, not maneuvers. Estimate it
 from (a) the launch injection C3 (from the flown Earth-relative departure energy,
-or published values), (b) deep-space maneuvers / TCMs (velocity discontinuities in
-the flown states, or published budgets), and (c) Mars orbit insertion if included.
+or published values), (b) deep-space maneuvers / trajectory-correction maneuvers
+(TCMs; velocity discontinuities in the flown states, or published budgets), and
+(c) Mars orbit insertion if included.
 
 ## Caveats (read before claiming "we beat NASA")
 
@@ -65,10 +66,10 @@ the flown states, or published budgets), and (c) Mars orbit insertion if include
   a total that models the same injection.
 - **Gravity-assist missions are near-impossible to beat on Δv** and shouldn't be
   used as "beat it" targets — use them to test whether the agent can *discover*
-  an assist at all (the genuinely open, exciting question).
+  an assist at all (the open question).
 - Best "fair fight" targets are the **direct Earth→Mars cruises** above: matched
   departure/arrival states, same N-body dynamics, Δv-vs-Δv.
 
 This benchmark is the payoff of the Tier-3 ephemeris N-body decision (see
-`docs/ROADMAP.md`): it lets us demonstrate real optimality — or honestly report
-its absence — against non-ML, professionally flown solutions.
+`docs/ROADMAP.md`): it lets us demonstrate real optimality — or report its
+absence — against non-ML, professionally flown solutions.
