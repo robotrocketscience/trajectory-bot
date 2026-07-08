@@ -259,7 +259,8 @@ def nodal_rate(a, inc):
 
 def hohmann_roundtrip(a0, a_low):
     """Δv and one-way transfer time for a Hohmann round trip a0↔a_low (circular↔circular)."""
-    vc0 = np.sqrt(MU / a0); vcl = np.sqrt(MU / a_low)
+    vc0 = np.sqrt(MU / a0)
+    vcl = np.sqrt(MU / a_low)
     at = 0.5 * (a0 + a_low)
     v_apo = np.sqrt(MU * (2.0 / a0 - 1.0 / at))       # transfer speed at a0 radius
     v_peri = np.sqrt(MU * (2.0 / a_low - 1.0 / at))   # transfer speed at a_low radius
@@ -390,7 +391,8 @@ def analytic(args):
     policy and passive-J2 at the three frontier points. If analytic-dive ≈ policy, the
     'beat' is REDISCOVERY of a known operational strategy, not a novel diff-sim find."""
     print("=== Build M R-M1: analytic dive-drift vs diff-sim policy vs passive-J2 ===")
-    r_boost = args.rboost; inc = args.inc
+    r_boost = args.rboost
+    inc = args.inc
     # (ΔΩ°, budget days, dt, VERIFIED Build L policy total Δv km/s)
     pts = [(30.0, 8.0, 60.0, 0.540), (60.0, 16.0, 120.0, 0.548), (90.0, 24.0, 120.0, 0.571)]
     print(f"  scenario: alt {args.alt:.0f} km circular, i={inc:.1f}°, r_boost={r_boost:.0f} km")

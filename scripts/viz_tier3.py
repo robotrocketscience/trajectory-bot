@@ -87,7 +87,7 @@ def compute_capture(Ax=0.02, dt=5e-5, n_seed=40, pos_disp=1e-4, t_prop=6.0,
         raise RuntimeError("no ballistic capture found for these manifold params — "
                            "widen n_seed/pos_disp/t_prop (defaults reproduce Build H R-H3)")
     return dict(lp=lp, orbit=orbit, tube=tube, best=best, bound=best["bound"],
-                revs=best["revs"], days=best["days"],
+                revs=best["revs"], days=best["days"], dt=dt,
                 closest_km=best["d"] * C.L_UNIT_KM, E=best["E"])
 
 
@@ -136,7 +136,7 @@ def fig_capture(cap):
     kind = "verified temporary capture" if cap["revs"] >= 2.0 else "bound arc"
     axes[1].set_title(
         f"{kind}: E_moon={cap['E']:+.2f} (<0, bound), closest {cap['closest_km']:.0f} km, "
-        f"{cap['revs']:.1f} Moon revs / ~{cap['days']:.0f} d (dt=5e-5)", fontsize=9.5)
+        f"{cap['revs']:.1f} Moon revs / ~{cap['days']:.0f} d (dt={cap['dt']:.0e})", fontsize=9.5)
     leg = [Line2D([0], [0], color=ORBIT, lw=2, label="L2 Lyapunov orbit"),
            Line2D([0], [0], color=TUBE, lw=2, alpha=0.6, label="stable manifold"),
            Line2D([0], [0], color=CAPTURE, lw=2, label="capture transfer arc"),
@@ -273,21 +273,24 @@ def fig_j2(j2):
     # (3) frontier — policy ≈ analytic dive, both far below passive (savings grow with ΔΩ)
     ax = axes[2]
     dO = [d for d, _, _ in FRONTIER]
-    pol = [p for _, p, _ in FRONTIER]; ana = [a for _, _, a in FRONTIER]
+    pol = [p for _, p, _ in FRONTIER]
+    ana = [a for _, _, a in FRONTIER]
     ax.axhline(1.0, color="#999", ls="--", lw=1.0)
     ax.text(90, 1.03, "naive passive-J2", ha="right", fontsize=7.5, color="#999")
     ax.plot(dO, ana, "--s", color="#8a6d3b", lw=1.6, ms=6, zorder=3,
             label="analytic dive optimum")
     ax.plot(dO, pol, "-o", color=EARTH, lw=2.0, ms=8, zorder=4,
             label="diff-sim policy (rediscovered)")
-    for d, p in zip(dO, pol):
+    for d, p in zip(dO, pol, strict=True):
         ax.annotate(f"{(1-p)*100:.0f}% under\npassive", (d, p),
                     textcoords="offset points", xytext=(8, 5), fontsize=7.5,
                     color=EARTH)
     ax.set_xlabel("node change ΔΩ (deg)")
     ax.set_ylabel("Δv vs passive-J2  (ratio)")
     ax.set_title("policy rediscovers the analytic dive", fontsize=10)
-    ax.set_ylim(0.2, 1.14); ax.set_xlim(20, 102); ax.set_xticks(dO)
+    ax.set_ylim(0.2, 1.14)
+    ax.set_xlim(20, 102)
+    ax.set_xticks(dO)
     ax.legend(fontsize=7.5, frameon=False, loc="lower left")
     ax.spines[["top", "right"]].set_visible(False)
     fig.suptitle("J2 node change: a diff-sim policy REDISCOVERS the operational "
