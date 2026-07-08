@@ -366,6 +366,27 @@ problem. Honest residual: the very-low-thrust corner (≤2×) doesn't fully conv
 Δv must spread over 10+ segments) — wants a true NLP solver (SLSQP/IPOPT with hard defect constraints). General
 lesson recorded: scale the state to O(1) when gradient-optimizing multi-body trajectories.
 
+**Build N R-N6 — gravity-assist frontier, round 1: forward-model fidelity** (`scripts/nbody_flyby.py`; user
+direction "do the gravity-assist frontier"). North star (user): agent DISCOVERS a gravity assist — Voyager-style,
+possibly multiple — by numerical differentiation of the environment, then GENERALIZES to future missions
+(amortized mission planning). Per memory 418e2e2, assists are near-impossible to beat on Δv, so the honest prize
+is *discovery*, not "beat it." R-N6 first tests the load-bearing assumption underneath all of that: **can the
+R-N5 engine (fixed-step RK4 + Plummer softening) even reproduce a flyby?** Rig: a two-body flyby vs the EXACT
+hyperbola, judged by the conserved invariants (ε→V∞, eccentricity vector→turn δ). **H-N6a SUPPORTED:** at
+dt≤500 s / soft=10 km the turn matches to 0.000%, V∞ to 0.0000% — machine precision. **H-N6c SUPPORTED (sharp
+step-size ceiling):** error explodes for dt ≳ 0.3·t_peri (t_peri=r_p/v_peri); R-N5's fixed ≈14 h step carries a
+WIDE gas-giant graze (0.004%) but gives 27–55% garbage on a TIGHT terrestrial-SOI-scale pass. **H-N6b SUPPORTED
+(after fixing a metric bug):** softening suppresses the turn once soft ≳ 0.15·r_p (1.9% at 0.15, 15% at 0.5,
+33% at 1.0) — but my first metric (δ from the eccentricity vector) was BLIND to it, because softened gravity is
+still central/conservative and conserves ε and h, so the osculating eccentricity is invariant by construction;
+the raw velocity turn is the correct probe. **The tension that scopes R-N7:** softening (R-N5 added it for smooth
+flyby gradients) must be ≲0.1·r_p or the assist is physically fake, and no single fixed step serves both cruise
+and periapsis — so discovery needs small softening + adaptive/local stepping near close approaches, OR a
+flyby-NODE transcription (patched V∞-in=V∞-out, bounded turn as a boundary condition) on the R-N5 multiple-shooting
+engine, which is how real mission design does it. R-N6 proved this before a discovery round could return a
+silently suppressed, coarse-stepped fake assist. Assists are also epoch-specific (belief 8f2ff0a) — generalization
+must be over launch windows.
+
 ## Mission composition — stringing maneuvers together
 
 Worked example (yours): **Falcon 9 → 28.5° inclined parking orbit (KSC) → equatorial
