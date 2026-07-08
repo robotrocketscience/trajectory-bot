@@ -387,6 +387,32 @@ engine, which is how real mission design does it. R-N6 proved this before a disc
 silently suppressed, coarse-stepped fake assist. Assists are also epoch-specific (belief 8f2ff0a) — generalization
 must be over launch windows.
 
+**Build N R-N7 — can differentiation EXPLOIT a known assist?** (`scripts/nbody_flyby_exploit.py`). Offline
+Sun + MOVING Jupiter (an assist needs a moving body — a fixed one only bends the path with no heliocentric
+energy change). Single-shooting: departure velocity differentiated through a full fine-step (40k-step) rollout
+that resolves the flyby (R-N6-clean). Target = a real flyby seed's endpoint (6 AU); fair direct Lambert to the
+same (r2, 5.5-yr TOF) is the baseline. **Two honest verdicts.** (1) **The assist is real & large — SUPPORTED:**
+a fully-integrated, R-N6-clean trajectory reaches the target for **9.20 km/s vs the direct ≥25.3** (~63% saving
+from Jupiter's orbital energy), closest approach 6.5 R_J. (2) **Raw-environment differentiation does NOT robustly
+exploit it — the pre-registered NULL fired:** a **2 m/s** departure perturbation (0.02% of the excess) shifts the
+Jupiter approach by ~one r_p, the post-flyby arc diverges chaotically, terminal miss explodes to **1.26 billion
+km**, and single-shooting gradient descent cannot recover the razor-thin basin (1500 iters). The thin basin IS the
+invariant-manifold tube — reachable by phase-space structure (Tisserand/manifold topology), not by gradient
+descent through the raw field. Same long-arc single-shooting stiffness R-N5 fixed for the direct arc, amplified by
+the flyby. Scopes R-N8: a flyby-NODE transcription (bounded turn as a boundary condition) and/or multiple-shooting
+with a node bracketing the close approach, to localize the perturbation and remove the razor-sensitivity.
+
+**Build N R-N8+ (planned) — the Hamiltonian / phase-space thread** (user direction). Two principled tools fold
+into what's built: (a) **primer-vector extraction from the diff-sim adjoint** — reverse-mode backprop through the
+RK4 rollout IS the discrete costate, so Lawden's primer vector (|p|=1, ṗ·p̂=0 at optimal impulse times) is inside
+the gradient already computed; extracting it turns diff-sim into an optimality *certificate* for burn timing/
+location (Lawden 1963; Conway 2010). (b) **Tisserand–Poincaré graph outer loop** for flyby-SEQUENCE discovery —
+the Tisserand parameter is conserved across an unpowered flyby, so plotting candidates in that phase space
+enumerates energetically-connectable assist sequences (Strange & Longuski 2002), the principled discrete search
+the diff-sim inner loop lacks. Ties back to Build H's validated CR3BP invariant-manifold seeding (Koon-Lo-Marsden-
+Ross 2011). Hybrid: diff-sim direct-optimizes to get near, phase-space topology structures the discrete search and
+verifies optimality.
+
 ## Mission composition — stringing maneuvers together
 
 Worked example (yours): **Falcon 9 → 28.5° inclined parking orbit (KSC) → equatorial
