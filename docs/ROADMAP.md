@@ -443,11 +443,23 @@ next layer). Strange & Longuski 2002; ties to Build H's CR3BP manifolds (Koon-Lo
 the discovery toolkit: Tisserand enumerate (R-N10) → flyby-node optimize (R-N8) → primer certify (R-N9)** — the
 system-level answer to "can it discover a Voyager-style tour," with each layer's honest scope stated.
 
-**Build N — next layers (planned).** (1) Resonant-phasing / launch-window search so an enumerated Tisserand
-sequence becomes a date-specific flyable trajectory (the piece R-N10 flags as unsolved). (2) Wire the three
-layers end-to-end on a real ephemeris case (Tisserand proposes → R-N8 node optimizes each leg on JPL ephemerides
-→ R-N9 primer certifies) — a full grand-tour discovery demonstration. (3) Amortize the outer loop (learned
-sequence proposer) for mission planning — the north-star generalization.
+**Build N R-N11 — end-to-end grand-tour pipeline on real ephemerides** (`scripts/grand_tour.py`). The three
+layers wired into one pipeline: Tisserand PROPOSE (R-N10) → flyby-node OPTIMIZE (R-N8, Lambert reach + bounded
+node turn) → primer CERTIFY (R-N9). **H-N11a SUPPORTED:** offline (analytic circular Jupiter, CI-safe) the
+pipeline composes end-to-end — propose escape → reach Jupiter to 0 km → post-flyby escape (a=−134 AU, e=1.038)
+→ primer certifies the leg (|p|=0.996). **H-N11b SUPPORTED:** on REAL Horizons Earth+Jupiter states
+(2005-08-12, cached; real v_Jupiter=12.45 vs 13.06 circular; Jupiter Keplerian-propagated to the flyby epoch —
+live Horizons unavailable during a network outage) all three layers run on real data, the real flyby reaches
+escape — AND the primer correctly flags that this un-searched epoch is badly phased (sweep ~59°, dep Δv 33 km/s,
+|p|=3.14, DSM needed): the CERTIFY layer catching a bad launch window is the pipeline working. **H-N11c
+SUPPORTED:** honest scope — fixed epoch + min-Δv TOF pick, no launch-window/phasing search; H-N11b's badly-phased
+real result is the concrete signpost to that next layer.
+
+**Build N — remaining layers (planned).** (1) Resonant-phasing / launch-window search so an enumerated Tisserand
+sequence becomes a well-phased date-specific trajectory (R-N11's badly-phased real transfer shows exactly why —
+the primer flagged it). (2) Amortize the outer loop (learned sequence + launch-window proposer) for mission
+planning — the north-star generalization: map (target, constraints, window) → sequence + warm-start, solved by
+inference + a few diff-sim refinement steps.
 
 ## Mission composition — stringing maneuvers together
 
