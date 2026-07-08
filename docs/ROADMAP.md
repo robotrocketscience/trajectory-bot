@@ -320,6 +320,22 @@ as a −508 m/s "correction"; added a Sun-only self-consistency gate that flags 
 instead of reporting an artifact. The differentiable optimizer, being branch-agnostic, still
 solves MAVEN's long-way targeting where fixed-iteration Lambert fails.
 
+**Build N R-N3 — attribute the R-N2 correction, test its assumptions** (`scripts/nbody_transfer.py
+--decompose`). The original R-N3 ("epoch sweep on a gain") was moot — R-N2 found a correction, not a
+gain — so this round instead stress-tests the three assumptions R-N2's number rests on, by flying the
+two-body Lambert plan under single-perturber subsets. **H-N3a SUPPORTED:** Jupiter alone reproduces
+90–105% of the ~30–85k km cruise miss (Saturn/Venus each <8k km) — the correction is a Jupiter
+third-body perturbation, matching the order estimate. **H-N3b REFUTED-as-phrased but vindicates the
+exclusion:** naively adding Earth as a heliocentric perturber blows the miss to ~1e8 km; a gate-radius
+probe shows it shrinks monotonically (4.4e6→5.5e4 km from 1×→30× Earth SOI) because the transfer
+lingers within a few SOI of Earth at departure — that near-Earth gravity is the patched-conic C3 phase
+(vehicle-set, separate), so excluding Earth/Mars from the cruise perturber set is REQUIRED, now
+demonstrated not asserted (the target body Mars is fine; the departure body is the outlier). **H-N3c
+REFUTED-as-phrased:** d_Jup barely varies (4.99–5.44 AU, near-circular orbit) so the miss spread (2.7×)
+is a transfer-geometry/TOF effect, not 1/d² distance — consistent with R-N2's epoch-stable ±0.5–0.8 m/s
+across 2001–2020. Next: R-N4 low-thrust / rendezvous on real ephemerides, once the perturbation model
+is trusted.
+
 ## Mission composition — stringing maneuvers together
 
 Worked example (yours): **Falcon 9 → 28.5° inclined parking orbit (KSC) → equatorial
