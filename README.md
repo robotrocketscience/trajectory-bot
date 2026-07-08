@@ -9,11 +9,12 @@ claim re-verified at high fidelity before it's stated.
   <img src="docs/media/maneuver.gif" width="420" alt="policy flying a circularization maneuver"/>
 </p>
 
-The agent is a small MLP at the **decision layer only**: every 200 s it emits
-a thrust direction (in the orbit frame) and a throttle; a deterministic
-pointing controller slews the spacecraft and a quaternion rigid-body
-integrator does the physics. The policy never touches attitude directly —
-burn *planning* is learned, burn *execution* is classical GNC.
+The agent is a small MLP (multi-layer perceptron) at the **decision layer
+only**: every 200 s it emits a thrust direction (in the orbit frame) and a
+throttle; a deterministic pointing controller slews the spacecraft and a
+quaternion rigid-body integrator does the physics. The policy never touches
+attitude directly — burn *planning* is learned, burn *execution* is classical
+GNC (guidance, navigation, and control).
 
 ```mermaid
 flowchart LR
@@ -68,7 +69,7 @@ was cloned from a fixed-target expert and had never imitated tracking. See
   <img src="docs/media/trajectory.png" width="820" alt="one episode: path and orbital elements"/>
 </p>
 
-It isn't one lucky episode — the final policy solves the distribution. Forty
+The final policy solves the distribution, not one lucky episode. Forty
 random start orbits, each flown to termination, coloured by whether the
 finish landed inside the 5% tolerance box:
 
@@ -127,8 +128,9 @@ watch the path tighten onto the target ring:
 
 The playbook that survived: **measure the per-episode norm distribution,
 delete the monster tail (trimmed mean), clip survivors at the measured p90,
-bank progress with an EMA policy, polish at low lr**. The failure modes en
-route (truncation bias in short-horizon BPTT, absorbing-state mismatches,
+bank progress with an EMA (exponential moving average) policy, polish at low
+lr**. The failure modes en route (truncation bias in short-horizon
+backpropagation through time, absorbing-state mismatches,
 potential-shaping traps that pay for zero progress, a normalize-epsilon that
 seeded 1e6 gradients at every coast decision) are documented in
 [`docs/EXPERIMENTS_3D.md`](docs/EXPERIMENTS_3D.md) (3-D campaign) and
@@ -138,15 +140,15 @@ seeded 1e6 gradients at every coast decision) are documented in
 
 The same backprop-through-physics approach extends to multi-body dynamics and to
 maneuvers where a fidelity term the textbook ignores changes the optimal strategy.
-Two recent threads (full methodology and honest verdicts in
+Two recent threads (full methodology and verdicts in
 [`docs/ROADMAP.md`](docs/ROADMAP.md)):
 
 **Ballistic capture at the Moon (CR3BP).** A hand-rolled differentiable
 circular-restricted three-body engine (rotating Earth–Moon frame, Jacobi constant
 conserved to ~1e-7), the stable manifold of an L2 Lyapunov orbit computed from its
 monodromy matrix (symplectic, det = 1), and a manifold-seeded transfer that arrives
-*captured* at the Moon — Moon-relative energy < 0, staying bound for **4.6 lunar
-revolutions** (~26 days, verified at dt = 5e-5) with **no capture burn** — where a
+*captured* at the Moon: Moon-relative energy < 0, staying bound for **4.6 lunar
+revolutions** (~26 days, verified at dt = 5e-5) with **no capture burn**, where a
 naive departure-burn search finds none.
 
 <p align="center">
@@ -164,19 +166,18 @@ the target node for ~0.88× the Δv of naive passive waiting at 30°, falling to
 quarter–half at 60–90° (the bigger the node change, the more the dive pays) — and
 lands within ~10–15% of an *analytic* optimization of that same dive-drift strategy
 (which is slightly cheaper still). So this is autonomous rediscovery of a known
-technique from the raw objective, **not a novel beat** — the same genre as the agent
+technique from the raw objective, **not a novel beat**: the same genre as the agent
 rediscovering the raise-to-plane-change trick elsewhere in the project.
 
 <p align="center">
   <img src="docs/media/j2_beat.png" width="960" alt="the policy dives to speed J2 nodal drift, reaches the target node passive falls short of, and matches the analytic dive optimum well under passive"/>
 </p>
 
-These are the honest positives at the frontier, with the deflations kept in view:
-the capture is in the idealized CR3BP (not real JPL ephemerides yet); the J2 result is
-a rediscovery that an analytic dive beats, and its low-thrust Δv is idealized
-(impulsive-per-step). The regimes where the savings vanish (small node angles, budgets
-so long that passive is free) are recorded per build — no claim outruns its
-verification.
+Both results come with their deflations attached: the capture is in the idealized
+CR3BP (not real JPL ephemerides yet); the J2 result is a rediscovery that an
+analytic dive beats, and its low-thrust Δv is idealized (impulsive-per-step). The
+regimes where the savings vanish (small node angles, budgets so long that passive
+is free) are recorded per build.
 
 ## Quickstart
 
@@ -218,7 +219,7 @@ small rendered figures only.
 | `scripts/eval_probe.py`, `norm_probe.py`, `step_probe.py`, … | The measurement toolkit the optimizer forensics ran on. |
 | `docs/EXPERIMENTS_3D.md`, `docs/EXPERIMENTS.md` | The optimizer-forensics campaign (3-D) and the 2-D milestone methodology. |
 | `docs/ROADMAP.md`, `docs/AUDIT.md` | Target maneuvers and the audit of the 2021 code. |
-| `v2/`, `archive/` | The 2021 course project, kept as the honest "before" picture (excluded from CI/typing). |
+| `v2/`, `archive/` | The 2021 course project, kept as the "before" picture (excluded from CI/typing). |
 
 ## Roadmap
 
