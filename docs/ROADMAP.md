@@ -430,12 +430,24 @@ maneuver; an independent optimality certificate for the baseline the whole Δv c
 necessary (first-order) condition, not sufficient; exactly-180° transfers excluded (Φ_rv singular). Lawden 1963;
 Conway 2010.
 
-**Build N R-N10+ (planned) — Tisserand–Poincaré outer loop for flyby-SEQUENCE discovery** (user direction). The
-Tisserand parameter is conserved across an unpowered flyby, so plotting candidates in that phase space enumerates
-energetically-connectable assist sequences (Strange & Longuski 2002) — the principled discrete search the diff-sim
-inner loop lacks (R-N8's "emergence" needed the node's body+epoch given; this supplies which-body/when). Ties back
-to Build H's validated CR3BP invariant-manifold seeding (Koon-Lo-Marsden-Ross 2011). Hybrid: Tisserand topology
-proposes the discrete sequence → R-N8 flyby-node transcription optimizes it → R-N9 primer certifies it.
+**Build N R-N10 — Tisserand–Poincaré outer loop for flyby-SEQUENCE discovery** (`scripts/tisserand_graph.py`).
+The discovery capstone: the discrete which-body/when structure gradient descent provably can't find (R-N7 null).
+Tisserand parameter conserved across a flyby (v∞²/v_P²=3−T_P); flyby walks the craft along a constant-v∞ contour.
+**H-N10a SUPPORTED:** the invariant is exact — T constant to ~1e-15 along a contour, = 3−(v∞/v_P)². **H-N10b
+SUPPORTED (the Voyager result):** at launch v∞=9 km/s a single Earth flyby reaches r_a=2.88 AU, but the SEQUENCE
+(4 Earth v∞-leveraging flybys → cross Jupiter → 1 Jupiter flyby, δmax=148°) achieves SOLAR-SYSTEM ESCAPE (e≥1) —
+the classic Jupiter-powered escape, discovered by enumeration; honest negative: v∞=7 km/s stalls at 3.21 AU
+(never reaches Jupiter). **H-N10c SUPPORTED:** every encounter's implied r_p clears the surface (min 1.5 R_J).
+Deterministic enumeration, NOT learned discovery; a reachability skeleton (resonant phasing / launch window is the
+next layer). Strange & Longuski 2002; ties to Build H's CR3BP manifolds (Koon-Lo-Marsden-Ross 2011). **Completes
+the discovery toolkit: Tisserand enumerate (R-N10) → flyby-node optimize (R-N8) → primer certify (R-N9)** — the
+system-level answer to "can it discover a Voyager-style tour," with each layer's honest scope stated.
+
+**Build N — next layers (planned).** (1) Resonant-phasing / launch-window search so an enumerated Tisserand
+sequence becomes a date-specific flyable trajectory (the piece R-N10 flags as unsolved). (2) Wire the three
+layers end-to-end on a real ephemeris case (Tisserand proposes → R-N8 node optimizes each leg on JPL ephemerides
+→ R-N9 primer certifies) — a full grand-tour discovery demonstration. (3) Amortize the outer loop (learned
+sequence proposer) for mission planning — the north-star generalization.
 
 ## Mission composition — stringing maneuvers together
 
