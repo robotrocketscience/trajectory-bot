@@ -288,6 +288,20 @@ step as in the original. If a cleaner idealized testbed is ever wanted for
 manifold analysis, CR3BP can be added later as an *optional* alternate model, but
 the primary Tier-3 dynamics are ephemeris-driven N-body.
 
+**Build N — the ephemeris N-body engine is built + verified (R-N1)** (`scripts/nbody_sim.py`;
+`.rnd/campaign-2026-07-07-nbody-ephemeris.md`). Starts paying the ephemeris-port debt after
+Builds F–M ran on sanctioned testbeds (CR3BP, two-body+J2). JAX differentiable rollout of a
+spacecraft under K point-mass bodies at **exogenous** positions (pre-sampled from the verified
+`ephemeris.py`, held per RK4 step); physical km/s units, IAU/DE440 GM. Verified OFFLINE
+(CI-safe, no network): two-body Kepler limit closes to machine precision (|Δr|/a=9e-13),
+energy conserved to 7e-15, differentiable (finite ∂miss/∂Δv). Real-ephemeris bridge (`--fetch`)
+propagates a 1 AU heliocentric orbit under real Sun+Earth+Moon, bounded 1.0000 AU over 100 d.
+HONEST LIMITATION (real method finding): bodies-held-per-step is valid at heliocentric scale
+but BREAKS for close geocentric orbits (Earth moves ~9000 km/step ≫ LEO radius) — near-Earth
+phases need substep body interpolation / a patched geocentric frame, added in R-N2. Next:
+R-N2 differentiate a departure Δv to a target vs the Lambert optimum (fair in-space Δv metric);
+R-N3 epoch sweep on any gain (syzygy gains are epoch-specific).
+
 ## Mission composition — stringing maneuvers together
 
 Worked example (yours): **Falcon 9 → 28.5° inclined parking orbit (KSC) → equatorial
