@@ -1,4 +1,4 @@
-# Experiments — Milestone 1: 2-D Circularization
+# Experiments — Milestone 1: 2-D circularization
 
 This is the running results log for the revived project. Milestone 1 is the
 minimal case — circularize a spacecraft from an elliptical orbit to a circular
@@ -105,8 +105,8 @@ handled by gradient clipping without NaNs.
 Model-free RL and imitation wall out here because they **discard the fact that the
 dynamics are known and exactly differentiable**. The differentiable-simulation
 policy gradient exploits exactly that, and unlike imitation it optimizes the *true*
-objective — so it is the method positioned to eventually *beat* analytic baselines,
-not merely match them (see `docs/ROADMAP.md` for where that matters:
+objective — so it is the method that could eventually *beat* analytic baselines
+rather than just match them (see `docs/ROADMAP.md` for where that matters:
 combined maneuvers, low-thrust, and multi-body, where Hohmann is not optimal).
 
 **Milestone 1 verdict:** the physics-informed differentiable-sim approach is the
