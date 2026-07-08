@@ -302,6 +302,24 @@ phases need substep body interpolation / a patched geocentric frame, added in R-
 R-N2 differentiate a departure Δv to a target vs the Lambert optimum (fair in-space Δv metric);
 R-N3 epoch sweep on any gain (syzygy gains are epoch-specific).
 
+**Build N R-N2 — departure Δv on real ephemerides vs the two-body Lambert optimum**
+(`scripts/nbody_transfer.py`; substep interp added to `scripts/nbody_sim.py`). Added
+`rollout_interp` (bodies at the RK4 substages t, t+dt/2, t+dt), fixing R-N1's held-per-step
+limitation — verified against the same machine-precision Kepler closure. Fair Δv-vs-Δv test on
+matched endpoints (r1 = departure-body @ launch, r2 = target-body @ arrival, TOF fixed):
+Lambert (`scripts/lambert.py`, Sun-only) gives the two-body baseline; a differentiable
+departure-Δv optimizer solves the same targeting under the real perturbed field. **H-N2a
+SUPPORTED (offline gate):** Sun-only, the optimizer recovers the Lambert Δv from a cold Δv=0
+start to 1.24e-11 relative (miss → 0). **H-N2b SUPPORTED (real, --fetch):** across 5 direct
+Earth→Mars cruises (MRO/Odyssey/TGO/Perseverance/MSL), the two-body Lambert plan misses Mars by
+30–85k km under Sun+Jupiter+Saturn+Venus; re-optimizing closes it for a **±0.5–0.8 m/s (±0.02%)**
+correction — the third-body perturbation, small & epoch-consistent (a CORRECTION, not a beat:
+Lambert is the endpoint-matched two-body optimum). **Honesty guard fired:** MAVEN (long-way 230°
+sweep) exposed a non-converged single-rev Lambert baseline (self-miss 3.16e7 km), first mis-read
+as a −508 m/s "correction"; added a Sun-only self-consistency gate that flags an invalid baseline
+instead of reporting an artifact. The differentiable optimizer, being branch-agnostic, still
+solves MAVEN's long-way targeting where fixed-iteration Lambert fails.
+
 ## Mission composition — stringing maneuvers together
 
 Worked example (yours): **Falcon 9 → 28.5° inclined parking orbit (KSC) → equatorial
