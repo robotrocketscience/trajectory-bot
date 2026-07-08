@@ -1,4 +1,4 @@
-# TrajectoryBot — Code Audit (2026)
+# TrajectoryBot — code audit (2026)
 
 Audit of the recovered 2021 graduate astrodynamics course project. Goal: understand what it does,
 why it never learned a trajectory, and what to fix to make it a working,
