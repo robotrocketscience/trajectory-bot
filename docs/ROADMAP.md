@@ -455,11 +455,21 @@ escape — AND the primer correctly flags that this un-searched epoch is badly p
 SUPPORTED:** honest scope — fixed epoch + min-Δv TOF pick, no launch-window/phasing search; H-N11b's badly-phased
 real result is the concrete signpost to that next layer.
 
-**Build N — remaining layers (planned).** (1) Resonant-phasing / launch-window search so an enumerated Tisserand
-sequence becomes a well-phased date-specific trajectory (R-N11's badly-phased real transfer shows exactly why —
-the primer flagged it). (2) Amortize the outer loop (learned sequence + launch-window proposer) for mission
-planning — the north-star generalization: map (target, constraints, window) → sequence + warm-start, solved by
-inference + a few diff-sim refinement steps.
+**Build N R-N12 — launch-window / phasing search** (`scripts/launch_window.py`). The layer R-N11's primer
+flagged. Earth→Jupiter porkchop (analytic circular coplanar). **H-N12a SUPPORTED:** the search finds the
+well-phased window — dep Δv=8.801 km/s (Hohmann ideal 8.79, sweep 182°), windows recurring at 396 d ≈ the
+synodic period (398.9 d); worst anti-window 43 km/s (R-N11's regime). Turns R-N11's arbitrary 33 km/s epoch
+into an 8.8 km/s transfer. **H-N12b REFUTED-as-phrased → corrected:** the primer certifies DSM-optimality,
+which is ORTHOGONAL to phasing — the expensive anti-window is still primer-optimal (|p|=0.989); R-N11's
+|p|=3.14 was a specific contorted geometry with a genuine DSM, not a generic bad-phasing signature. Two tools:
+porkchop = phasing metric, primer = DSM metric. **H-N12c PARTIAL:** the v∞-leveraging orbits sit near low-order
+resonances (7:4, 7:3, 5:1) so the resonant-return mechanism is available, but the greedy energy-max pump doesn't
+land on exact resonances — exact multi-flyby phase-closure (tune flybys to resonances) is the remaining piece.
+
+**Build N — remaining layer (planned).** Amortize the outer loop (learned sequence + launch-window proposer)
+for mission planning — the north-star generalization: map (target, constraints, window) → sequence + warm-start,
+solved by inference + a few diff-sim refinement steps. (Plus, for full grand-tour phasing: tune the v∞-leveraging
+flybys to exact k:n resonances, R-N12c's remaining piece.)
 
 ## Mission composition — stringing maneuvers together
 
