@@ -336,6 +336,22 @@ is a transfer-geometry/TOF effect, not 1/d² distance — consistent with R-N2's
 across 2001–2020. Next: R-N4 low-thrust / rendezvous on real ephemerides, once the perturbation model
 is trusted.
 
+**Build N R-N4 — differentiable low-thrust Earth→Mars on real ephemerides** (`scripts/nbody_lowthrust.py`;
+adds a state-dependent RTN rollout `rollout_rtn`). Brings the diff-sim method's core strength (a
+continuous bounded-thrust control found by backprop) to the locked Tier-3 dynamics. **H-N4a SUPPORTED
+(capability):** the optimized RTN low-thrust control REACHES Mars — real Sun+Jupiter (MRO window) lands
+156–193 km from Mars at 5–10× the mean-accel-to-match, and reaches at 3× too; offline Sun-only reaches
+at 5×/10×. **H-N4b NOT cleanly testable by single-shooting — an honest method-limit finding:** the
+250-day terminal-miss landscape is too stiff for plain Adam (reach fails below ~5× offline — an optimizer
+floor, not physical, since the Δv budget is ample; misses non-monotonic), a band-limited Fourier control
+can't spike to impulsive (so dvr won't → 1), and the returned Δv is an un-economized UPPER BOUND
+(12–21 km/s vs the 4–5.5 km/s impulsive floor) — reporting it as a physical low-thrust cost would be
+dishonest. Corrects the pre-registered dvr-vs-thrust prediction: the diff-sim method that excelled on
+bounded-horizon problems (circularize / plane-change / capture) hits its limit on long-arc low-thrust
+interplanetary economics. Fix = a better-conditioned formulation (collocation / multiple-shooting, or the
+orbit-averaged elements Build C already validated for Edelbaum). R-N5 candidate: port `edelbaum_sim`'s
+averaged low-thrust engine onto real ephemeris gravity, where the horizon is tractable and Δv trustworthy.
+
 ## Mission composition — stringing maneuvers together
 
 Worked example (yours): **Falcon 9 → 28.5° inclined parking orbit (KSC) → equatorial
