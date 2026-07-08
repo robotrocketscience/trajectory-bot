@@ -250,6 +250,48 @@ def blind_plane_dv(a0, inc_deg, draan_deg, r_boost):
     return min(dv_single, dv_be), np.degrees(theta), dv_single, dv_be
 
 
+# ---------- ANALYTIC dive-drift-return baseline (the fair J2-AWARE optimum) ----------
+def nodal_rate(a, inc):
+    """Vallado secular nodal regression dΩ/dt (rad/s) for a circular orbit (e=0, p=a)."""
+    n = np.sqrt(MU / a ** 3)
+    return -1.5 * n * J2 * (R_BODY / a) ** 2 * np.cos(inc)
+
+
+def hohmann_roundtrip(a0, a_low):
+    """Δv and one-way transfer time for a Hohmann round trip a0↔a_low (circular↔circular)."""
+    vc0 = np.sqrt(MU / a0); vcl = np.sqrt(MU / a_low)
+    at = 0.5 * (a0 + a_low)
+    v_apo = np.sqrt(MU * (2.0 / a0 - 1.0 / at))       # transfer speed at a0 radius
+    v_peri = np.sqrt(MU * (2.0 / a_low - 1.0 / at))   # transfer speed at a_low radius
+    down = abs(vc0 - v_apo) + abs(v_peri - vcl)
+    return 2.0 * down, np.pi * np.sqrt(at ** 3 / MU)
+
+
+def analytic_dive_best(a0, inc_deg, draan_deg, T, r_boost, h_floor=300.0, n_grid=400):
+    """The fair J2-AWARE analytic optimum: min over dive altitude of
+        Hohmann(a0↔h) round-trip  +  impulsive residual plane change for the RAAN the
+        dive didn't drift away.
+    The dive (immediately) → coast low for the remaining budget → return (at the end)
+    maximises low-altitude dwell, hence drift. h=a0 recovers passive, so this is ≤ passive
+    by construction. Drift during the short transfer arcs is priced at their mean a.
+    Returns (best_total_Δv, best_alt_km, drift_deg, residual_deg)."""
+    inc = np.radians(inc_deg)
+    tgt = abs(np.radians(draan_deg))
+    best = (np.inf, a0 - R_BODY, 0.0, np.degrees(tgt))
+    for a_low in np.linspace(R_BODY + h_floor, a0, n_grid):
+        rt, tau = hohmann_roundtrip(a0, a_low)
+        at = 0.5 * (a0 + a_low)
+        t_low = max(0.0, T - 2.0 * tau)
+        drift = abs(nodal_rate(a_low, inc)) * t_low + abs(nodal_rate(at, inc)) * 2.0 * tau
+        residual = max(0.0, tgt - drift)              # RAAN the plane change must cover
+        cth = np.cos(inc) ** 2 + np.sin(inc) ** 2 * np.cos(residual)
+        theta = float(np.arccos(np.clip(cth, -1, 1)))
+        total = rt + float(plane_change_dv(theta, a0, r_boost))
+        if total < best[0]:
+            best = (total, a_low - R_BODY, np.degrees(drift), np.degrees(residual))
+    return best
+
+
 def check(args):
     print("=== R-L1: honesty guards + differentiability building block ===")
     a0, s0, tgt, n, draan = scenario(args)
@@ -343,10 +385,40 @@ def optimize(args):
           f"(GENUINE test)")
 
 
+def analytic(args):
+    """R-M1: pit the ANALYTIC dive-drift-return optimum against the verified diff-sim
+    policy and passive-J2 at the three frontier points. If analytic-dive ≈ policy, the
+    'beat' is REDISCOVERY of a known operational strategy, not a novel diff-sim find."""
+    print("=== Build M R-M1: analytic dive-drift vs diff-sim policy vs passive-J2 ===")
+    r_boost = args.rboost; inc = args.inc
+    # (ΔΩ°, budget days, dt, VERIFIED Build L policy total Δv km/s)
+    pts = [(30.0, 8.0, 60.0, 0.540), (60.0, 16.0, 120.0, 0.548), (90.0, 24.0, 120.0, 0.571)]
+    print(f"  scenario: alt {args.alt:.0f} km circular, i={inc:.1f}°, r_boost={r_boost:.0f} km")
+    for draan, days, dt, pol in pts:
+        a0 = R_BODY + args.alt
+        T = days * DAY
+        n = round(T / dt)
+        draan_s = -np.sign(np.cos(np.radians(inc))) * abs(draan)
+        s0 = jnp.asarray(orbit_state(a0, 0.0, inc, 0.0))
+        tgt = (float(a0), 0.0, float(np.radians(inc)), float(np.radians(draan_s)))
+        passive = passive_best(s0, dt, n, tgt, r_boost)
+        adv, alt_km, drift, resid = analytic_dive_best(a0, inc, draan, T, r_boost)
+        print(f"\n  ΔΩ={draan:.0f}° over {days:.0f} d:")
+        print(f"    diff-sim policy   {pol:.3f} km/s   (Build L, verified)")
+        print(f"    ANALYTIC dive     {adv:.3f} km/s   (dive to {alt_km:.0f} km, "
+              f"drift {drift:.1f}°, residual {resid:.1f}°)")
+        print(f"    passive-J2        {passive:.3f} km/s")
+        tag = "MATCH (rediscovery)" if abs(pol - adv) / adv < 0.10 else \
+              ("policy BEATS analytic" if pol < adv else "policy LOSES to analytic")
+        print(f"    → policy/analytic = {pol/adv:.3f}  [{tag}];  "
+              f"analytic/passive = {adv/passive:.3f}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--optimize", action="store_true")
+    ap.add_argument("--analytic", action="store_true")
     ap.add_argument("--alt", type=float, default=1500.0)   # altitude defining a0=R+alt
     ap.add_argument("--e0", type=float, default=0.0)        # start (and target) eccentricity
     ap.add_argument("--inc", type=float, default=51.6)
@@ -367,6 +439,8 @@ def main():
         check(args)
     if args.optimize:
         optimize(args)
+    if args.analytic:
+        analytic(args)
 
 
 if __name__ == "__main__":
