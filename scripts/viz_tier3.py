@@ -47,8 +47,8 @@ INK = "#333333"
 
 
 # ---------------------------------------------------------------- CR3BP capture
-def compute_capture(Ax=0.02, dt=1e-4, n_seed=40, pos_disp=1e-4, t_prop=6.0,
-                    rec=20, verify_steps=40000):
+def compute_capture(Ax=0.02, dt=5e-5, n_seed=40, pos_disp=1e-4, t_prop=6.0,
+                    rec=40, verify_steps=120000):
     """Reproduce Build H R-H3: L2 Lyapunov orbit → stable manifold → best ballistic
     capture arc → its bounded lunar orbit. Returns everything needed to draw it."""
     lp = C.lagrange_points()
@@ -56,29 +56,39 @@ def compute_capture(Ax=0.02, dt=1e-4, n_seed=40, pos_disp=1e-4, t_prop=6.0,
     s0, T, N, orbit, Mm, v_s, lam, w, res = M.orbit_and_monodromy(xL2, Ax, dt)
     ics, labels = M.manifold_ics(s0, N, v_s, n_seed, pos_disp, dt)
     n_prop = int(round(t_prop / dt))
-    tube = M.propagate_batch(ics, -dt, n_prop, record_every=rec)      # (F,K,6) backward
-    best = None
+    tube = M.propagate_batch(ics, -dt, n_prop, record_every=rec)      # (F,K,6) for plotting
+    # candidate captures from the coarse tube (enter Hill sphere with Moon-energy < 0)
+    cand = []
     for k in range(ics.shape[0]):
-        tk = tube[:, k, :]
-        d, sp, E = M.moon_rel_np(tk)
-        if d.min() < M.R_HILL:
-            j = int(np.argmin(d))
-            if E[j] < 0.0 and (best is None or E[j] < best["E"]):
-                best = {"k": k, "E": float(E[j]), "d": float(d[j]),
-                        "s_ca": tk[j].copy(), "arc": tk[:j + 1].copy()}
+        d, _, E = M.moon_rel_np(tube[:, k, :])
+        if d.min() < M.R_HILL and E[int(np.argmin(d))] < 0.0:
+            cand.append(k)
+    # refine each candidate at FULL resolution (coarse recording misses the true perilune),
+    # verify the bound orbit, and keep the best VERIFIED capture (most Moon revs, Build H bar).
+    best = None
+    for k in cand:
+        fine = M.propagate_np(ics[k], -dt, n_prop)                   # full-res arc
+        d, _, E = M.moon_rel_np(fine)
+        j = int(np.argmin(d))
+        if E[j] >= 0.0:
+            continue
+        bt, revs, dmin = M.bounded_verify(fine[j], dt, verify_steps)
+        score = (round(revs, 2), -float(E[j]))
+        if best is None or score > best["score"]:
+            bound = M.propagate_batch(fine[j][None, :], dt, verify_steps,
+                                      record_every=rec)[:, 0, :]
+            d_b = np.linalg.norm(bound[:, 0:3] - M.R_MOON, axis=1)
+            lft = np.where(d_b > M.R_HILL)[0]
+            best = {"k": k, "E": float(E[j]), "d": float(dmin),
+                    "arc": fine[:j + 1:rec].copy(), "revs": float(revs),
+                    "days": bt * C.T_UNIT_S / 86400.0,
+                    "bound": bound[:lft[0]] if len(lft) else bound, "score": score}
     if best is None:
         raise RuntimeError("no ballistic capture found for these manifold params — "
                            "widen n_seed/pos_disp/t_prop (defaults reproduce Build H R-H3)")
-    bound = M.propagate_batch(best["s_ca"][None, :], dt, verify_steps,
-                              record_every=rec)[:, 0, :]
-    d_b = np.linalg.norm(bound[:, 0:3] - M.R_MOON, axis=1)
-    left = np.where(d_b > M.R_HILL)[0]
-    bound = bound[:left[0]] if len(left) else bound
-    revs = M.count_moon_revs(bound)
-    bt = (len(bound) * rec) * dt * C.T_UNIT_S / 86400.0
-    return dict(lp=lp, orbit=orbit, tube=tube, best=best, bound=bound,
-                revs=revs, days=bt, closest_km=best["d"] * C.L_UNIT_KM,
-                E=best["E"])
+    return dict(lp=lp, orbit=orbit, tube=tube, best=best, bound=best["bound"],
+                revs=best["revs"], days=best["days"],
+                closest_km=best["d"] * C.L_UNIT_KM, E=best["E"])
 
 
 def _draw_bodies(ax, lp, zoom):
@@ -123,9 +133,10 @@ def fig_capture(cap):
                       fontsize=10)
     z = 1 - C.MU
     axes[1].set_xlim(z - 0.26, z + 0.20); axes[1].set_ylim(-0.23, 0.23)
+    kind = "verified temporary capture" if cap["revs"] >= 2.0 else "bound arc"
     axes[1].set_title(
-        f"ballistic capture: {cap['closest_km']:.0f} km, E_moon={cap['E']:+.2f} "
-        f"(bound), {cap['revs']:.1f} revs / ~{cap['days']:.0f} d", fontsize=10)
+        f"{kind}: E_moon={cap['E']:+.2f} (<0, bound), closest {cap['closest_km']:.0f} km, "
+        f"{cap['revs']:.1f} Moon revs / ~{cap['days']:.0f} d (dt=5e-5)", fontsize=9.5)
     leg = [Line2D([0], [0], color=ORBIT, lw=2, label="L2 Lyapunov orbit"),
            Line2D([0], [0], color=TUBE, lw=2, alpha=0.6, label="stable manifold"),
            Line2D([0], [0], color=CAPTURE, lw=2, label="capture transfer arc"),
@@ -220,9 +231,12 @@ def compute_j2(alt=1500.0, inc=51.6, draan=30.0, days=8.0, dt=120.0,
                 tgt_deg=tgt_deg, draan=draan_signed)
 
 
-# Verified campaign frontier (Build L, .rnd/campaign-2026-07-07-j2-eccentric-sweep):
-# active vs passive-J2 total Δv ratio at ~80%-passive-coverage budgets.
-FRONTIER = [(30, 0.876), (60, 0.449), (90, 0.313)]
+# Campaign frontier (Builds L + M): total Δv as a ratio of passive-J2, at ~80%-coverage
+# budgets. The diff-sim policy REDISCOVERS the dive-drift strategy; an analytic optimization
+# of that same strategy (Build M) is ~10-15% cheaper still — so this is rediscovery of a
+# known operational maneuver, not a novel beat. Both crush naive passive waiting.
+#   ΔΩ:   (node angle°, policy/passive, analytic-dive/passive)
+FRONTIER = [(30, 0.876, 0.801), (60, 0.449, 0.405), (90, 0.313, 0.271)]
 
 
 def fig_j2(j2):
@@ -256,22 +270,28 @@ def fig_j2(j2):
     ax.set_ylim(j2["draan"] - 4, 3)
     ax.legend(fontsize=8, frameon=False, loc="lower left")
     ax.spines[["top", "right"]].set_visible(False)
-    # (3) frontier — beat grows with node angle
+    # (3) frontier — policy ≈ analytic dive, both far below passive (savings grow with ΔΩ)
     ax = axes[2]
-    dO = [d for d, _ in FRONTIER]; r = [x for _, x in FRONTIER]
-    ax.axhline(1.0, color="#bbb", ls="--", lw=1.0)
-    ax.plot(dO, r, "-o", color=BOUND, lw=2.0, ms=8, zorder=3)
-    for d, x in FRONTIER:
-        ax.annotate(f"{(1-x)*100:.0f}% cheaper", (d, x), textcoords="offset points",
-                    xytext=(9, 6), fontsize=8.5, color=BOUND, fontweight="bold")
+    dO = [d for d, _, _ in FRONTIER]
+    pol = [p for _, p, _ in FRONTIER]; ana = [a for _, _, a in FRONTIER]
+    ax.axhline(1.0, color="#999", ls="--", lw=1.0)
+    ax.text(90, 1.03, "naive passive-J2", ha="right", fontsize=7.5, color="#999")
+    ax.plot(dO, ana, "--s", color="#8a6d3b", lw=1.6, ms=6, zorder=3,
+            label="analytic dive optimum")
+    ax.plot(dO, pol, "-o", color=EARTH, lw=2.0, ms=8, zorder=4,
+            label="diff-sim policy (rediscovered)")
+    for d, p in zip(dO, pol):
+        ax.annotate(f"{(1-p)*100:.0f}% under\npassive", (d, p),
+                    textcoords="offset points", xytext=(8, 5), fontsize=7.5,
+                    color=EARTH)
     ax.set_xlabel("node change ΔΩ (deg)")
     ax.set_ylabel("Δv vs passive-J2  (ratio)")
-    ax.set_title("beat grows with node angle", fontsize=10)
-    ax.set_ylim(0.2, 1.12); ax.set_xlim(20, 100); ax.set_xticks(dO)
-    ax.text(90, 1.02, "passive-J2 baseline", ha="right", fontsize=7.5, color="#999")
+    ax.set_title("policy rediscovers the analytic dive", fontsize=10)
+    ax.set_ylim(0.2, 1.14); ax.set_xlim(20, 102); ax.set_xticks(dO)
+    ax.legend(fontsize=7.5, frameon=False, loc="lower left")
     ax.spines[["top", "right"]].set_visible(False)
-    fig.suptitle("J2 node change: a diff-sim policy beats the J2-aware analytic "
-                 "optimum by exploiting nodal drift", fontsize=11)
+    fig.suptitle("J2 node change: a diff-sim policy REDISCOVERS the operational "
+                 "nodal-drift maneuver (dive → drift → return)", fontsize=11)
     fig.tight_layout()
     fig.savefig(MEDIA / "j2_beat.png", dpi=110, bbox_inches="tight")
     plt.close(fig)
