@@ -202,8 +202,10 @@ uv run --with jax --with matplotlib --with pillow python scripts/viz_readme_extr
 uv run --with jax --with matplotlib --with pillow python scripts/viz_tier3.py          # CR3BP capture + J2-beat frontier (no checkpoint needed)
 ```
 
-Checkpoints and run logs are not committed (they regenerate by training);
-`docs/media/` holds the small rendered figures only.
+Checkpoints and run logs are not committed (they regenerate by training); the
+circularize-lineage checkpoints behind the figures are published as a
+[GitHub release](../../releases/tag/readme-checkpoints). `docs/media/` holds the
+small rendered figures only.
 
 ## Repository map
 
