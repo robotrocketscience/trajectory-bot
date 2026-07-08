@@ -418,16 +418,24 @@ basin into a smooth landscape where gradient descent robustly finds AND holds th
 Hamiltonian/phase-space framing. Remaining for real discovery: the discrete which-body/whether-to-flyby choice
 (Tisserand outer loop) + an optimality certificate (primer vector).
 
-**Build N R-N9+ (planned) — the Hamiltonian / phase-space thread** (user direction). Two principled tools fold
-into what's built: (a) **primer-vector extraction from the diff-sim adjoint** — reverse-mode backprop through the
-RK4 rollout IS the discrete costate, so Lawden's primer vector (|p|=1, ṗ·p̂=0 at optimal impulse times) is inside
-the gradient already computed; extracting it turns diff-sim into an optimality *certificate* for burn timing/
-location (Lawden 1963; Conway 2010). (b) **Tisserand–Poincaré graph outer loop** for flyby-SEQUENCE discovery —
-the Tisserand parameter is conserved across an unpowered flyby, so plotting candidates in that phase space
-enumerates energetically-connectable assist sequences (Strange & Longuski 2002), the principled discrete search
-the diff-sim inner loop lacks. Ties back to Build H's validated CR3BP invariant-manifold seeding (Koon-Lo-Marsden-
-Ross 2011). Hybrid: diff-sim direct-optimizes to get near, phase-space topology structures the discrete search and
-verifies optimality.
+**Build N R-N9 — primer vector from the diff-sim adjoint: an optimality CERTIFICATE** (`scripts/primer_vector.py`).
+Reverse-mode backprop through the RK4 rollout IS the discrete STM/costate, so Lawden's primer vector (|p|≤1, =1
+at impulses; |p|>1 interior ⟺ a midcourse impulse lowers Δv) falls out of the gradient machinery already built —
+no separate indirect solver. **H-N9a SUPPORTED:** autodiff cumulative-product STM matches finite-difference to
+1.71e-6. **H-N9b SUPPORTED:** an operational midcourse re-solve confirms the primer on every testable case
+(optimal |p|=0.997 → no benefit; marginal |p|=1.020 → real 0.25% gain; suboptimal |p|=2.64 → −34% Δv), with a
+multi-rev case correctly guard-skipped (test-side limit, not mislabeled). **H-N9c SUPPORTED:** the real direct
+Earth→Mars cruise (R-N2/R-N5 geometry) is certified **primer-optimal, |p|=0.998** — no beneficial deep-space
+maneuver; an independent optimality certificate for the baseline the whole Δv campaign rests on. The primer is a
+necessary (first-order) condition, not sufficient; exactly-180° transfers excluded (Φ_rv singular). Lawden 1963;
+Conway 2010.
+
+**Build N R-N10+ (planned) — Tisserand–Poincaré outer loop for flyby-SEQUENCE discovery** (user direction). The
+Tisserand parameter is conserved across an unpowered flyby, so plotting candidates in that phase space enumerates
+energetically-connectable assist sequences (Strange & Longuski 2002) — the principled discrete search the diff-sim
+inner loop lacks (R-N8's "emergence" needed the node's body+epoch given; this supplies which-body/when). Ties back
+to Build H's validated CR3BP invariant-manifold seeding (Koon-Lo-Marsden-Ross 2011). Hybrid: Tisserand topology
+proposes the discrete sequence → R-N8 flyby-node transcription optimizes it → R-N9 primer certifies it.
 
 ## Mission composition — stringing maneuvers together
 
