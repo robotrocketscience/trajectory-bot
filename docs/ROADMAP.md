@@ -494,11 +494,24 @@ sensitivity), stalling at 178 m/s; the apoapsis mid-arc TCM re-closes it (27.8 m
 makes mid-arc control well-conditioned. Conditioning dictates WHERE to burn — the R-N13 razor resurfacing one
 layer up.
 
-**Build N — gravity-assist arc COMPLETE (R-N6 → R-N14).** Represent (N6) → raw-gradient null (N7) → flyby-node
-fix (N8) → primer certificate (N9) → Tisserand sequence discovery (N10) → end-to-end pipeline on real data
-(N11) → launch-window/phasing (N12) → amortized mission-planner (N13) → exact resonant phase-closure (N14). No
-planned layers remain; further work would be new frontiers (real multi-body ephemeris tours, 3-D/inclined
-geometry, or a full learned tour-planner over the R-N14 resonance graph).
+**Build N — coplanar gravity-assist arc COMPLETE (R-N6 → R-N14).** Represent (N6) → raw-gradient null (N7) →
+flyby-node fix (N8) → primer certificate (N9) → Tisserand sequence discovery (N10) → end-to-end pipeline on real
+data (N11) → launch-window/phasing (N12) → amortized mission-planner (N13) → exact resonant phase-closure (N14).
+
+**Build N R-N15 — 3-D inclination-pumping flyby** (`scripts/inclination_flyby.py`). Opens the 3-D frontier by
+questioning the coplanar assumption that underlay all 14 prior rounds. Real-world anchor: Ulysses reached a ~79°
+solar-polar orbit from one Jupiter flyby. A flyby conserves |v∞| and rotates the v∞ vector in any direction
+(≤δmax); tilting it out of the ecliptic buys inclination via v_out = v_planet + v∞_out — free (geometry, not Δv).
+**H-N15a SUPPORTED:** the 3-D diff-sim conserves |v∞| (3e-7) and e (1e-8) through a resolved out-of-plane pass,
+deflection matches 2·arcsin(1/e) — R-N6 fidelity, out of plane. **H-N15b SUPPORTED (calibration noted):** max
+free inclination 17.8°/27.3°/43.5° at v∞=4/6/9 — the Ulysses mechanism, growing toward polar; the pre-registered
+">25°" holds for v∞≳5.5 (honestly under 20° below that). **H-N15c SUPPORTED:** the inclination–aphelion trade —
+at low inc the flyby can escape (unbounded), at high inc (>35°) aphelion is bounded at 12.2 AU; one flyby cannot
+maximize both energy and inclination (they compete on the shared Tisserand contour).
+
+**Build N — next frontiers (unplanned, open).** The 3-D Tisserand graph (R-N10 + the cos i axis) for inclined
+tour discovery; real multi-body ephemeris tours (R-N11 did one leg); a learned tour-planner combining R-N13's
+amortization with R-N14's resonance ladder.
 
 ## Mission composition — stringing maneuvers together
 
