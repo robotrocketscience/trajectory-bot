@@ -46,6 +46,7 @@ R_JUP = 71492.0
 B_OFF = 300.0 * R_JUP                  # flyby aim offset (perp) — inside Jupiter's SOI, no plunge
 SOFT = 3.0 * R_JUP                     # Plummer softening (bounds the gradient through the pass)
 N = 1500                               # RK4 steps per transfer
+TOL_KM = 1.0                           # convergence tolerance on the terminal miss (km)
 BODY_GM = jnp.array([MU_S, MU_J])
 R1 = np.array([AU, 0.0, 0.0])          # Earth at departure (frame-fixed)
 V_EARTH = np.array([0.0, np.sqrt(MU_S / AU), 0.0])
@@ -82,7 +83,7 @@ def lambert_seed(theta_arr, tof):
     return np.asarray(vd)[:2]
 
 
-def gauss_newton(theta_arr, tof, v0, iters=25, tol=1e2):
+def gauss_newton(theta_arr, tof, v0, iters=25, tol=TOL_KM):
     """Backtracking Gauss-Newton on the terminal miss through the perturbed rollout."""
     body_seq, target, _ = jup_seq(theta_arr, tof)
     dt = tof / N
@@ -95,31 +96,38 @@ def gauss_newton(theta_arr, tof, v0, iters=25, tol=1e2):
         r = _endpoint(v, body_seq, dt) - target
         J = jax.jacfwd(lambda vv: _endpoint(vv, body_seq, dt))(v)
         dv = jnp.linalg.solve(J, r)
-        step, mn = 1.0, miss
+        # backtracking line search: only accept a step that decreases the miss, and keep
+        # (v, miss) consistent — the accepted pair always corresponds to the same step.
+        step, improved = 1.0, False
         while step > 1e-4:
-            mn = float(jnp.linalg.norm(_endpoint(v - step * dv, body_seq, dt) - target))
+            vn = v - step * dv
+            mn = float(jnp.linalg.norm(_endpoint(vn, body_seq, dt) - target))
             if mn < miss:
+                v, miss, improved = vn, mn, True
                 break
             step *= 0.5
-        v, miss = v - step * dv, mn
         hist.append(miss)
+        if not improved:                          # stalled — no descent step found
+            break
     return np.asarray(v), hist
 
 
 def make_dataset(n, rng):
     ths = rng.uniform(*THA, n)
     tfs = rng.uniform(*TOFY, n)
-    X, Y, seed_miss, corr = [], [], [], []
+    X, Y, seed_miss, corr, final_miss = [], [], [], [], []
     for th, tf in zip(ths, tfs):
         thr, tof = np.radians(th), tf * 365.25 * DAY
         vs = lambert_seed(thr, tof)
         vstar, hist = gauss_newton(thr, tof, vs)
-        if hist[-1] < 1e3 and np.all(np.isfinite(vstar)):
+        if hist[-1] < TOL_KM and np.all(np.isfinite(vstar)):
             X.append([th, tf])
             Y.append(vstar)
             seed_miss.append(hist[0])
             corr.append(np.linalg.norm(vstar - vs))
-    return (np.array(X), np.array(Y), np.array(seed_miss), np.array(corr))
+            final_miss.append(hist[-1])
+    return (np.array(X), np.array(Y), np.array(seed_miss),
+            np.array(corr), np.array(final_miss))
 
 
 # ---------- tiny MLP (pure JAX, hand-rolled Adam) ----------
@@ -166,9 +174,10 @@ def mlp_train(p, X, Y, iters=3000, lr=3e-3):
 def verify(args):
     print("=== R-N13: amortized mission-planner — learn the (mission → warm-start) map (offline) ===")
     rng = np.random.default_rng(0)
-    X, Y, seed_miss, corr = make_dataset(args.ndata, rng)
-    print(f"  dataset: {len(X)}/{args.ndata} missions solved to <1 km through the perturbed Sun+Jupiter "
-          f"rollout;\n           Lambert-seed miss median {np.median(seed_miss):.2e} km, "
+    X, Y, seed_miss, corr, final_miss = make_dataset(args.ndata, rng)
+    print(f"  dataset: {len(X)}/{args.ndata} missions solved to <{TOL_KM:.0f} km (median final miss "
+          f"{np.median(final_miss):.2e} km) through the perturbed Sun+Jupiter rollout;\n"
+          f"           Lambert-seed miss median {np.median(seed_miss):.2e} km, "
           f"Lambert→optimal correction median {np.median(corr):.3f} km/s (the amortization headroom)")
 
     # ---- H-N13a: generalization ----
@@ -203,12 +212,12 @@ def verify(args):
         dt = tof / N
         cold0.append(float(jnp.linalg.norm(_endpoint(jnp.asarray(vs), bs, dt) - tg)))
         warm0.append(float(jnp.linalg.norm(_endpoint(jnp.asarray(yhat), bs, dt) - tg)))
-        cold_s.append(len(gauss_newton(thr, tof, vs, tol=1e3)[1]) - 1)
-        warm_s.append(len(gauss_newton(thr, tof, yhat, tol=1e3)[1]) - 1)
+        cold_s.append(len(gauss_newton(thr, tof, vs, tol=TOL_KM)[1]) - 1)
+        warm_s.append(len(gauss_newton(thr, tof, yhat, tol=TOL_KM)[1]) - 1)
     b_ok = np.median(warm_s) < np.median(cold_s) and np.median(warm0) < np.median(cold0)
     print(f"  H-N13b: warm-start miss@0 median {np.median(warm0):.2e} km vs cold Lambert "
           f"{np.median(cold0):.2e} km ({np.median(cold0)/max(np.median(warm0),1):.0f}× lower)")
-    print(f"          refinement steps to <1 km: warm median {np.median(warm_s):.1f} vs "
+    print(f"          refinement steps to <{TOL_KM:.0f} km: warm median {np.median(warm_s):.1f} vs "
           f"cold {np.median(cold_s):.1f} → {'SUPPORTED' if b_ok else 'REFUTED'} "
           f"(inference + fewer diff-sim steps replaces the full search)")
 
