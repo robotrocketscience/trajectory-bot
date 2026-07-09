@@ -151,7 +151,8 @@ def verify(args):
     def cum_dv_measured(v_target, v0=3.0):
         vs = np.linspace(v0, v_target, 400)
         Lv = np.clip(np.interp(vs, vv, ll), 0.3, None)
-        return float(np.trapezoid(1.0 / Lv, vs))          # dv = ∫ dv∞ / L(v∞)
+        integrand = 1.0 / Lv                              # dv = ∫ dv∞ / L(v∞)
+        return float(np.sum(np.diff(vs) * 0.5 * (integrand[:-1] + integrand[1:])))   # trapezoid, numpy-agnostic
 
     ratios = []
     for i_star in (15, 20, 25, 30, 40):
