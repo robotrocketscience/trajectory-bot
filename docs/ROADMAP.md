@@ -561,16 +561,30 @@ enforcing a resonant re-encounter (constant period) caps inclination below the f
 circle whose max inclination gaps the ceiling by 0.3–4° as the resonant period grows; the R-N17c inclination–
 energy competition, now as a phasing price. Real inclination tours pay for re-encounter.
 
-**Build N — 3-D gravity-assist arc COMPLETE (R-N15 → R-N18).** Single-flyby inclination pump (N15) → analytic
-ceiling + multi-flyby crank (N16) → diff-sim single-node optimizer confirming the ceiling + inc–energy frontier
-(N17) → real multi-node tour realizing the ceiling in ~θ*/δmax nodes with a measured re-encounter cost (N18).
-Reachable inclination = arcsin(v∞/v_P); mission-design law v∞ ≥ v_P·sin(i); phasing-feasible resonant tours pay
-a 0.3–4° inclination cost vs the free bound — all under the patched-conic model above.
+**Build N R-N19 — V∞-leveraging RAISES the inclination ceiling: the Δv–inclination exchange rate**
+(`scripts/vinf_leverage_incl.py`). The round that BREAKS the ceiling instead of realizing it — the first Δv
+budget in the 3-D thread. Combines R-N14 (V∞-leveraging: apoapsis Δv changes v∞ with measured leverage ≈5.94)
+with R-N16/N18's ceiling arcsin(v∞/v_P): since the ceiling grows with v∞, spending Δv to pump v∞ raises it.
+**H-N19a SUPPORTED:** a 2 km/s leveraged budget pumps v∞ 5→17 and adds **25°** of ceiling — Δv traded for
+inclination above the free single-v∞ bound. **H-N19b SUPPORTED:** the exchange rate d(inc)/d(Δv)=L/(v_P·cos i)
+diverges near polar (0.66 vs 0.016 °/(m/s) at 89° vs 45°, cheap at the margin) while the cumulative Δv to polar
+is (v_P−v∞₀)/L ≈ 4.1 km/s (real, large). **H-N19c SUPPORTED (honestly bracketed):** leveraged-GA inclination is
+2–12× cheaper in Δv than a direct plane change (2·v·sin i/2) — ~10× at favorable leverage/low i, shrinking to
+~2× as leverage degrades toward polar (R-N14 L→1.3). Judged against the pre-registered falsifier (ratio<2×),
+NOT the "≥5×" point-estimate — the honest headline is "cheaper across the board, order-of-magnitude only at
+favorable leverage." Mechanism/exchange-rate study, never a Δv beat of a flown mission; both baselines are
+honest brackets. This is why Ulysses / Solar Orbiter crank inclination with assists, not burns.
+
+**Build N — out-of-plane arc COMPLETE (R-N15 → R-N19).** Single-flyby pump (N15) → analytic ceiling + crank
+(N16) → diff-sim single-node + inc–energy frontier (N17) → real multi-node tour realizing the ceiling in
+~θ*/δmax nodes + re-encounter cost (N18) → V∞-leveraging breaking the ceiling for a Δv price (N19). Reachable
+inclination = arcsin(v∞/v_P), free; raisable by leveraging at ~2–12× the efficiency of a brute plane change;
+mission-design law v∞ ≥ v_P·sin(i). All under the patched-conic model.
 
 **Build N — next frontiers (unplanned, open).** Real multi-body ephemeris tours (R-N11 did one leg); a learned
-tour-planner combining R-N13's amortization with R-N14's resonance ladder + R-N16's inclination axis;
-V∞-leveraging (R-N14) to RAISE the inclination ceiling itself (arcsin scales with v∞) — trading Δv for
-inclination above the free single-v∞ bound.
+tour-planner combining R-N13's amortization + R-N14's resonance ladder + R-N16's inclination axis + R-N19's
+Δv-leverage trade; a full diff-sim tour that DISCOVERS the leverage-then-crank strategy end-to-end (R-N19 was
+an analytic exchange-rate study, not an optimizer).
 
 ## Mission composition — stringing maneuvers together
 
