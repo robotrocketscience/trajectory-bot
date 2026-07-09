@@ -537,9 +537,17 @@ confirms R-N16's closed form under the true differentiable dynamics (analytic-gr
 compete — the Pareto frontier of max inclination vs demanded aphelion falls monotonically (aph 5.2→12.0 AU →
 max inc 26.6°→12.3°); my "aphelion pins" framing sharpened to a sloped 2-D reachability frontier.
 
+**Scope.** R-N17's demonstration is the patched-conic model — an instantaneous node rotation between two
+Sun-only Kepler legs, with v∞ held fixed for H-N17b/c — not a finite-duration integrated flyby with
+third-body perturbations on the legs. The ceiling `arcsin(v∞/v_P)` is a model-independent *kinematic* identity
+for a single unpowered flyby (`v_out = v_P + v∞`, `|v∞|` conserved; derived independently in R-N15/R-N16); what
+is specific to this setup is the diff-sim confirmation and the numeric feasibility boundary. A finite-duration
+integrated flyby (R-N7's razor basin) or a multi-node tour would re-test the surrounding claims.
+
 **Build N — 3-D gravity-assist arc COMPLETE (R-N15 → R-N17).** Single-flyby inclination pump (N15) → analytic
 ceiling + multi-flyby crank (N16) → diff-sim node optimizer confirming the ceiling and tracing the inc–energy
-frontier (N17). Reachable inclination = arcsin(v∞/v_P); mission-design law v∞ ≥ v_P·sin(i).
+frontier (N17). Reachable inclination = arcsin(v∞/v_P); mission-design law v∞ ≥ v_P·sin(i) — both under the
+patched-conic single-flyby model above.
 
 **Build N — next frontiers (unplanned, open).** Real multi-body ephemeris tours (R-N11 did one leg); a learned
 tour-planner combining R-N13's amortization with R-N14's resonance ladder + R-N16's inclination axis; a
