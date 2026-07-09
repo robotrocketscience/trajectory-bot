@@ -575,16 +575,30 @@ NOT the "≥5×" point-estimate — the honest headline is "cheaper across the b
 favorable leverage." Mechanism/exchange-rate study, never a Δv beat of a flown mission; both baselines are
 honest brackets. This is why Ulysses / Solar Orbiter crank inclination with assists, not burns.
 
-**Build N — out-of-plane arc COMPLETE (R-N15 → R-N19).** Single-flyby pump (N15) → analytic ceiling + crank
-(N16) → diff-sim single-node + inc–energy frontier (N17) → real multi-node tour realizing the ceiling in
-~θ*/δmax nodes + re-encounter cost (N18) → V∞-leveraging breaking the ceiling for a Δv price (N19). Reachable
-inclination = arcsin(v∞/v_P), free; raisable by leveraging at ~2–12× the efficiency of a brute plane change;
-mission-design law v∞ ≥ v_P·sin(i). All under the patched-conic model.
+**Build N R-N20 — diff-sim tour DISCOVERS leverage-then-crank end-to-end (the capstone)**
+(`scripts/tour_discover_leverage.py`). The north-star round: DISCOVER, not derive. R-N19 derived the
+leverage-then-crank strategy analytically; R-N20 shows a differentiable optimizer — given ONLY a target
+inclination and a Δv-minimizing objective, never told to leverage, seeded at ZERO leverage — DISCOVERS it.
+**H-N20a SUPPORTED:** target below the free ceiling → pure-crank tour discovered (Δv 7 m/s ≈ 0); doesn't spend
+fuel it doesn't need. **H-N20b SUPPORTED (honest scope):** target above the ceiling → discovers it must
+leverage, spends 1.19 km/s (R-N19 analytic 1.20, 1% off) pumping v∞ 5→12 then cranking. The 1% match is a
+CONSISTENCY CHECK (same reduced physics — L, ceiling — so the optimum IS the R-N19 formula by construction),
+NOT independent Δv validation; the genuine result is the STRATEGY discovery. **H-N20c SUPPORTED:** efficient
+structure — pumps |v∞| to exactly v_P·sin(i*) (ratio 1.00), no over-pump, then cranks. Robust across targets
+35°/50°/65° (0% off). Reduced-order transcription (leverage from R-N14's real-sim 5.94, crank from R-N16);
+L=6 optimistic → discovered Δv a lower bound.
 
-**Build N — next frontiers (unplanned, open).** Real multi-body ephemeris tours (R-N11 did one leg); a learned
-tour-planner combining R-N13's amortization + R-N14's resonance ladder + R-N16's inclination axis + R-N19's
-Δv-leverage trade; a full diff-sim tour that DISCOVERS the leverage-then-crank strategy end-to-end (R-N19 was
-an analytic exchange-rate study, not an optimizer).
+**Build N — out-of-plane arc COMPLETE (R-N15 → R-N20).** Single-flyby pump (N15) → analytic ceiling + crank
+(N16) → diff-sim single-node + inc–energy frontier (N17) → real multi-node tour realizing the ceiling in
+~θ*/δmax nodes + re-encounter cost (N18) → V∞-leveraging breaking the ceiling for a Δv price (N19) → optimizer
+DISCOVERS the whole leverage-then-crank strategy from a naive objective (N20). Reachable inclination =
+arcsin(v∞/v_P), free; raisable by leveraging at ~2–12× the efficiency of a brute plane change; mission-design
+law v∞ ≥ v_P·sin(i); and the strategy is discoverable, not just derivable. All under the patched-conic model.
+
+**Build N — next frontiers (unplanned, open).** Real multi-body ephemeris tours (R-N11 did one leg); a full
+multi-leg rollout tour (real coast legs + apoapsis burns + re-encounter phasing) so the leverage is measured by
+the ENVIRONMENT, not a grounded relation (R-N20's honest successor — the reduced-order model replaced by the
+real diff-sim); a learned amortized tour-planner (R-N13 style) over the (target inclination, Δv) map.
 
 ## Mission composition — stringing maneuvers together
 
