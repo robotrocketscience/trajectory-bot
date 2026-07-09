@@ -81,7 +81,9 @@ def numeric_flyby(vinf, rp_target, u, dt_frac=0.08):
     u = u / np.linalg.norm(u)
     vperi = np.sqrt(vinf ** 2 + 2 * MU_J / rp_target)
     b = rp_target * vperi / vinf
-    bdir = np.cross(u, [0.0, 0.0, 1.0])
+    # impact-parameter direction ⟂ u; pick a reference axis not parallel to u to avoid a zero cross product
+    ref = np.array([0.0, 0.0, 1.0]) if abs(u[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
+    bdir = np.cross(u, ref)
     bdir = bdir / np.linalg.norm(bdir)
     L = 400 * R_JUP
     r0 = -u * L + bdir * b
