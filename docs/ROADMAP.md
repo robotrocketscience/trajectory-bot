@@ -480,9 +480,25 @@ REGIME-BOUNDED: learnable in the smooth pre-flyby (node-transcription) regime, u
 razor basin. Closes the arc R-N7 (raw gradient can't exploit) → R-N8 (node transcription smooths it) → R-N13 (the
 smoothed regime is exactly the amortizable regime).
 
-**Build N — remaining layer (planned).** Exact multi-flyby resonant phase-closure: tune the v∞-leveraging flybys
-to exact k:n resonances (R-N12c's remaining piece) so a full Voyager-style staircase closes its return phasing,
-not just its energy. (The amortized-proposer north star is delivered and bounded by R-N13.)
+**Build N R-N14 — exact resonant-return phase closure + V∞-leveraging** (`scripts/resonant_leveraging.py`).
+Closes R-N12c's remaining piece. Tune each Earth flyby to an exact N:M resonance (craft N orbits per M
+Earth-years → period (M/N)·T_⊕) so the craft returns to the same inertial encounter where Earth also is after
+M whole years. **H-N14a SUPPORTED (beyond prediction):** eight tuned resonances (3:2…1:2) return to Earth to
+~1e-3–1e-1 km (machine precision, not the predicted <1e5 km) and the low-order ladder is single-flyby-walkable
+(adjacent pump-angle gaps 8.8–32.9° < δmax 64.9°) — R-N10's greedy pump only landed NEAR these rungs, this
+lands ON them. **H-N14b SUPPORTED:** apoapsis-Δv leverage |Δv∞/Δv| ≈ 5.9 (2:3), 5.4 (3:4), 1.3 (5:4) — the
+Sims-Longuski VILM amplification. **H-N14c SUPPORTED, prediction CORRECTED:** Sun-only closure is exact;
+Jupiter leaves a bounded, robust residual (0.007 AU over 3 yr); but my pre-registered "departure tweak
+re-closes it" was wrong — departure control over M years is razor-ill-conditioned (the same R-N13/R-N7
+sensitivity), stalling at 178 m/s; the apoapsis mid-arc TCM re-closes it (27.8 m/s → sub-km) because leverage
+makes mid-arc control well-conditioned. Conditioning dictates WHERE to burn — the R-N13 razor resurfacing one
+layer up.
+
+**Build N — gravity-assist arc COMPLETE (R-N6 → R-N14).** Represent (N6) → raw-gradient null (N7) → flyby-node
+fix (N8) → primer certificate (N9) → Tisserand sequence discovery (N10) → end-to-end pipeline on real data
+(N11) → launch-window/phasing (N12) → amortized mission-planner (N13) → exact resonant phase-closure (N14). No
+planned layers remain; further work would be new frontiers (real multi-body ephemeris tours, 3-D/inclined
+geometry, or a full learned tour-planner over the R-N14 resonance graph).
 
 ## Mission composition — stringing maneuvers together
 
