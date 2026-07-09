@@ -521,9 +521,30 @@ SUPPORTED (mission-design law):** min v∞ for target inclination i is **v_P·si
 heliocentric Jupiter flyby is capped sub-polar, Titan (v∞≈v_P) approaches polar (why solar-polar missions are
 hard and Cassini used Titan, not the Sun).
 
+**Build N R-N17 — 3-D diff-sim flyby-node optimizer: target a specified inclined science orbit**
+(`scripts/nbody_flyby_node3d.py`). Puts the differentiable simulator (the project's core method) back at the
+center of the 3-D frontier: backprop through a 3-D **Rodrigues flyby node** (turn δ≤δmax about an arbitrary
+axis, azimuth φ), two smooth Sun-only legs, optimizing to hit orbital ELEMENTS (inclination, aphelion) — not a
+position. This is R-N8's node transcription generalized to 3-D + element targeting, and it validates R-N16's
+analytic ceiling through the actual diff-sim. **H-N17a SUPPORTED (correction):** from a strictly in-plane Earth
+departure the optimizer discovers the out-of-plane turn and hits i*=15° (defect 0.000°, leg-1 ≪ SOI); exact δ=0
+is a flat critical point (inclination is second-order in δ), so the flyby is seeded with a small symmetry-
+breaking turn — and `arccos(h_z/|h|)` NaNs the gradient at inc=0, fixed by targeting inclination through its
+cosine. **H-N17b SUPPORTED (headline):** with leg-1 fixed (v∞=5.84), the diff-sim feasibility boundary in i* is
+**26.6° = arcsin(v∞/v_P)** to <0.1° — reached below, floored above. The backprop optimizer independently
+confirms R-N16's closed form under the true differentiable dynamics (analytic-graph ↔ diff-sim closed).
+**H-N17c SUPPORTED (correction):** the single node lives on ONE Tisserand contour, so inclination and energy
+compete — the Pareto frontier of max inclination vs demanded aphelion falls monotonically (aph 5.2→12.0 AU →
+max inc 26.6°→12.3°); my "aphelion pins" framing sharpened to a sloped 2-D reachability frontier.
+
+**Build N — 3-D gravity-assist arc COMPLETE (R-N15 → R-N17).** Single-flyby inclination pump (N15) → analytic
+ceiling + multi-flyby crank (N16) → diff-sim node optimizer confirming the ceiling and tracing the inc–energy
+frontier (N17). Reachable inclination = arcsin(v∞/v_P); mission-design law v∞ ≥ v_P·sin(i).
+
 **Build N — next frontiers (unplanned, open).** Real multi-body ephemeris tours (R-N11 did one leg); a learned
-tour-planner combining R-N13's amortization with R-N14's resonance ladder + R-N16's inclination axis; a full
-diff-sim 3-D flyby-node optimizer that targets a specified inclined science orbit.
+tour-planner combining R-N13's amortization with R-N14's resonance ladder + R-N16's inclination axis; a
+multi-node 3-D tour targeting an inclined science orbit through a SEQUENCE of diff-sim flyby nodes (R-N17 was
+single-node).
 
 ## Mission composition — stringing maneuvers together
 
