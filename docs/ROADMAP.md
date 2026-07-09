@@ -586,19 +586,36 @@ CONSISTENCY CHECK (same reduced physics — L, ceiling — so the optimum IS the
 NOT independent Δv validation; the genuine result is the STRATEGY discovery. **H-N20c SUPPORTED:** efficient
 structure — pumps |v∞| to exactly v_P·sin(i*) (ratio 1.00), no over-pump, then cranks. Robust across targets
 35°/50°/65° (0% off). Reduced-order transcription (leverage from R-N14's real-sim 5.94, crank from R-N16);
-L=6 optimistic → discovered Δv a lower bound.
+L=6 flagged optimistic → discovered Δv a lower bound. **[R-N21 CORRECTS this: L=6 is NOT materially optimistic
+— it is conservative below i*≈25° and ≤1.3× optimistic above.]**
 
-**Build N — out-of-plane arc COMPLETE (R-N15 → R-N20).** Single-flyby pump (N15) → analytic ceiling + crank
+**Build N R-N21 — the ENVIRONMENT-measured leverage curve L(v∞): a CORRECTION round** (`scripts/real_leverage_curve.py`).
+Questioned the load-bearing premise of R-N19/R-N20 by MEASURING leverage from the real Sun-only diff-sim (R-N14
+machinery) instead of supplying a constant. A pre-run measurement REFUTED all three record-derived hypotheses.
+**H-N21a REFUTED:** leverage does NOT degrade with v∞ — best-resonance L stays 3.1–8.4 across v∞∈[3,25];
+R-N14's cited "1.33 at v∞=8" is reproduced EXACTLY but only on the low-apoapsis 5:4 resonance (apoapsis 1.13
+AU) — a resonance-selection artifact, since leverage is set by apoapsis distance (Sims-Longuski), not v∞.
+**H-N21b REFUTED:** integrating the measured L(v∞), the real cumulative-Δv / constant-L6 ratio is 0.80 (i*=15°)
+→ 1.21 (i*=40°) — L=6 is conservative below 25°, ≤1.3× optimistic above; corrects my own R-N20 caveat.
+**H-N21c REFUTED:** Earth leveraging does NOT saturate — the 1:2 family is feasible to v∞=25 km/s (ceiling
+57°), reaching i=30° for 2.10 km/s; the real bound is rising Δv + shrinking per-flyby δmax (7.2° at v∞=25 →
+crank steps get expensive), not leverage collapse. NET: the leverage-degradation premise threaded through
+R-N14→N19→N20 was largely a resonance-selection artifact; real best-resonance leverage is robust and set by
+apoapsis. Honesty scope: cumulative Δv is a VILM quadrature over measured single-leg leverages, not a monolithic
+multi-leg rollout (still the frontier).
+
+**Build N — out-of-plane arc COMPLETE (R-N15 → R-N20), leverage premise CORRECTED (R-N21).** Single-flyby pump (N15) → analytic ceiling + crank
 (N16) → diff-sim single-node + inc–energy frontier (N17) → real multi-node tour realizing the ceiling in
 ~θ*/δmax nodes + re-encounter cost (N18) → V∞-leveraging breaking the ceiling for a Δv price (N19) → optimizer
 DISCOVERS the whole leverage-then-crank strategy from a naive objective (N20). Reachable inclination =
 arcsin(v∞/v_P), free; raisable by leveraging at ~2–12× the efficiency of a brute plane change; mission-design
 law v∞ ≥ v_P·sin(i); and the strategy is discoverable, not just derivable. All under the patched-conic model.
 
-**Build N — next frontiers (unplanned, open).** Real multi-body ephemeris tours (R-N11 did one leg); a full
-multi-leg rollout tour (real coast legs + apoapsis burns + re-encounter phasing) so the leverage is measured by
-the ENVIRONMENT, not a grounded relation (R-N20's honest successor — the reduced-order model replaced by the
-real diff-sim); a learned amortized tour-planner (R-N13 style) over the (target inclination, Δv) map.
+**Build N — next frontiers (unplanned, open).** Real multi-body ephemeris tours (R-N11 did one leg); a
+MONOLITHIC multi-leg rollout tour (real coast legs + apoapsis burns + re-encounter phasing composed in ONE
+diff-sim) — R-N21 measured single-leg leverage from the environment and integrated it as a VILM quadrature, but
+composing leverage + crank + real inclined-orbit phasing in one rollout remains open; a learned amortized
+tour-planner (R-N13 style) over the (target inclination, Δv) map.
 
 ## Mission composition — stringing maneuvers together
 
