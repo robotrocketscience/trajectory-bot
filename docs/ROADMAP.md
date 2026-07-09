@@ -509,9 +509,21 @@ free inclination 17.8°/27.3°/43.5° at v∞=4/6/9 — the Ulysses mechanism, g
 at low inc the flyby can escape (unbounded), at high inc (>35°) aphelion is bounded at 12.2 AU; one flyby cannot
 maximize both energy and inclination (they compete on the shared Tisserand contour).
 
-**Build N — next frontiers (unplanned, open).** The 3-D Tisserand graph (R-N10 + the cos i axis) for inclined
-tour discovery; real multi-body ephemeris tours (R-N11 did one leg); a learned tour-planner combining R-N13's
-amortization with R-N14's resonance ladder.
+**Build N R-N16 — 3-D Tisserand graph: multi-flyby inclination cranking + the analytic ceiling**
+(`scripts/tisserand_3d.py`). Synthesis of R-N10 (in-plane sequence discovery) + R-N15 (single-flyby pump): a
+SEQUENCE of same-body flybys cranks inclination further (the Cassini-at-Titan mechanism). **H-N16b SUPPORTED
+(clean closed form):** the reachable-inclination ceiling (flybys→∞) is **arcsin(v∞/v_P)**, independent of body
+mass — reproduces R-N15 exactly (Jupiter@v∞6 = 27.4°). **H-N16a SUPPORTED, prediction REFINED:** multi-vs-single
+gain is Jupiter 1.0× (one big-δmax flyby reaches the ceiling — why Ulysses needed one Jupiter flyby), Mars 2.1×
+(genuine small-δmax staircase), Titan 1.5×; my "small δmax ⇒ many flybys" was not universal — near v∞≈v_P the
+orbit plane is hypersensitive to v∞, so the true governor is θ*/δmax (geodesic length / step). **H-N16c
+SUPPORTED (mission-design law):** min v∞ for target inclination i is **v_P·sin(i)**; polar needs v∞ ≥ v_P — a
+heliocentric Jupiter flyby is capped sub-polar, Titan (v∞≈v_P) approaches polar (why solar-polar missions are
+hard and Cassini used Titan, not the Sun).
+
+**Build N — next frontiers (unplanned, open).** Real multi-body ephemeris tours (R-N11 did one leg); a learned
+tour-planner combining R-N13's amortization with R-N14's resonance ladder + R-N16's inclination axis; a full
+diff-sim 3-D flyby-node optimizer that targets a specified inclined science orbit.
 
 ## Mission composition — stringing maneuvers together
 
