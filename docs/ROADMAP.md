@@ -544,15 +544,33 @@ for a single unpowered flyby (`v_out = v_P + v∞`, `|v∞|` conserved; derived 
 is specific to this setup is the diff-sim confirmation and the numeric feasibility boundary. A finite-duration
 integrated flyby (R-N7's razor basin) or a multi-node tour would re-test the surrounding claims.
 
-**Build N — 3-D gravity-assist arc COMPLETE (R-N15 → R-N17).** Single-flyby inclination pump (N15) → analytic
-ceiling + multi-flyby crank (N16) → diff-sim node optimizer confirming the ceiling and tracing the inc–energy
-frontier (N17). Reachable inclination = arcsin(v∞/v_P); mission-design law v∞ ≥ v_P·sin(i) — both under the
-patched-conic single-flyby model above.
+**Build N R-N18 — multi-node diff-sim inclination staircase: realize the R-N16 bound + re-encounter cost**
+(`scripts/nbody_tour_incl.py`). The multi-node continuation of R-N17 (single node) and the diff-sim test of
+whether R-N16's greedy-geodesic ceiling — flagged there as only an upper bound "pending phasing" — is actually
+realizable. A real K-node tour: K bounded Rodrigues rotations (|δ_k|≤δmax) with real Sun-only coast legs
+(closure ~1.6e-3 AU) between nodes, backprop-optimized. Real anchor: **Solar Orbiter** cranks heliocentric
+inclination to ~33° with ~7-8 **Venus** gravity assists (arcsin(19/35.02)=32.9°). **H-N18a SUPPORTED:** the
+diff-sim Venus tour cranks monotonically (K=1→11.8°, 6→32.8°), far exceeding one flyby, every |δ_k|≤δmax — the
+Solar Orbiter staircase in the differentiable simulator. **H-N18b SUPPORTED:** it saturates at **32.8°** vs the
+ceiling 32.9° (<0.1° short) and does not exceed it — the real tour REALIZES R-N16's greedy bound (achievable,
+not just analytic). **H-N18c SUPPORTED (goalpost corrected):** node count tracks **θ*/δmax** — Venus (θ*/δmax≈
+5.5) needs ~5 nodes to the ceiling (order Solar Orbiter's 7-8), Jupiter (θ*/δmax≈0.4) reaches it in ONE; my
+verdict code first used a stricter bar than the pre-registered falsifier (Venus ≤2 for 0.9·ceiling; it needed
+4), corrected to judge against the pre-registration (recurring R-N15 lesson). **DIAG (re-encounter cost):**
+enforcing a resonant re-encounter (constant period) caps inclination below the free ceiling — v∞_out lies on a
+circle whose max inclination gaps the ceiling by 0.3–4° as the resonant period grows; the R-N17c inclination–
+energy competition, now as a phasing price. Real inclination tours pay for re-encounter.
+
+**Build N — 3-D gravity-assist arc COMPLETE (R-N15 → R-N18).** Single-flyby inclination pump (N15) → analytic
+ceiling + multi-flyby crank (N16) → diff-sim single-node optimizer confirming the ceiling + inc–energy frontier
+(N17) → real multi-node tour realizing the ceiling in ~θ*/δmax nodes with a measured re-encounter cost (N18).
+Reachable inclination = arcsin(v∞/v_P); mission-design law v∞ ≥ v_P·sin(i); phasing-feasible resonant tours pay
+a 0.3–4° inclination cost vs the free bound — all under the patched-conic model above.
 
 **Build N — next frontiers (unplanned, open).** Real multi-body ephemeris tours (R-N11 did one leg); a learned
-tour-planner combining R-N13's amortization with R-N14's resonance ladder + R-N16's inclination axis; a
-multi-node 3-D tour targeting an inclined science orbit through a SEQUENCE of diff-sim flyby nodes (R-N17 was
-single-node).
+tour-planner combining R-N13's amortization with R-N14's resonance ladder + R-N16's inclination axis;
+V∞-leveraging (R-N14) to RAISE the inclination ceiling itself (arcsin scales with v∞) — trading Δv for
+inclination above the free single-v∞ bound.
 
 ## Mission composition — stringing maneuvers together
 
