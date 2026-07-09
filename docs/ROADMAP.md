@@ -620,18 +620,31 @@ geometry. Honest scope: forward tour (leverage then crank as phases), not a sing
 joint optimum — that remains the frontier. (Two of three verdicts are corrections surfaced by pre-run probes
 overturning my intuitions; H-N22a first REFUTED on a real perihelion-lift bug, caught and fixed before record.)
 
-**Build N — out-of-plane arc COMPLETE (R-N15 → R-N20), leverage premise CORRECTED (R-N21), composition VERIFIED in the real rollout (R-N22).** Single-flyby pump (N15) → analytic ceiling + crank
+**Build N R-N23 — does the composition survive a real third body (Jupiter)?** (`scripts/jupiter_perturbed_tour.py`).
+Questioned the Sun-only assumption underpinning the whole N15–N22 arc by adding Jupiter (real GM, circular
+ecliptic — analytic, CI-safe) to the R-N22 tour. **H-N23a SUPPORTED:** Jupiter's per-leg phasing residual is
+bounded and leg-dependent — 0.004–0.016 AU on long leverage legs (1:2, 2 yr, apo 2.2 AU) vs 0.0005–0.0015 AU on
+short crank legs (1:1, 1 yr), a 10× ratio; real (≫ machine precision), not divergent. **H-N23b SUPPORTED:** the
+mechanism survives — the v∞ pump climbs 8→15.29 (Sun-only 15.24) and the crank still reaches 29.7° (Jupiter
+perturbs phasing, not the flyby-geometry-set crank). **H-N23c SUPPORTED:** re-closing each leg with a
+well-conditioned apoapsis TCM (R-N14) costs ~19 m/s mean → ~292 m/s ≈ 19% of the 1.50 km/s leverage budget — a
+modest, bounded overhead. NET: the Sun-only arc's conclusions survive a real third body with a quantified ~19%
+correction budget (a null-of-worry, honestly reported). Honest scope: Jupiter circular/coplanar (not full JPL
+ephemeris — inner planets + Jupiter's inclination/eccentricity neglected); TCM is a per-leg pure-closure
+estimate, not a single accumulating closed-loop targeted tour.
+
+**Build N — out-of-plane arc COMPLETE (R-N15 → R-N20), leverage premise CORRECTED (R-N21), composition VERIFIED in the real rollout (R-N22), robust to a real third body (R-N23).** Single-flyby pump (N15) → analytic ceiling + crank
 (N16) → diff-sim single-node + inc–energy frontier (N17) → real multi-node tour realizing the ceiling in
 ~θ*/δmax nodes + re-encounter cost (N18) → V∞-leveraging breaking the ceiling for a Δv price (N19) → optimizer
 DISCOVERS the whole leverage-then-crank strategy from a naive objective (N20). Reachable inclination =
 arcsin(v∞/v_P), free; raisable by leveraging at ~2–12× the efficiency of a brute plane change; mission-design
 law v∞ ≥ v_P·sin(i); and the strategy is discoverable, not just derivable. All under the patched-conic model.
 
-**Build N — next frontiers (unplanned, open).** Real multi-body ephemeris tours (R-N11 did one leg); a JOINT
-backprop-through-everything tour optimizer — R-N22 composed leverage + crank as forward PHASES in one real
-rollout, but letting a single optimizer interleave and co-optimize the leverage burns and crank turns (and
-choose the resonances) is open; a learned amortized tour-planner (R-N13 style) over the (target inclination, Δv)
-map.
+**Build N — next frontiers (unplanned, open).** FULL JPL-ephemeris tour (R-N23 tested one perturber, Jupiter,
+circular/coplanar; the real inner planets + Jupiter's inclination/eccentricity need the network-gated Horizons
+fetch — not CI-safe as-is); a single accumulating closed-loop targeted tour (R-N23 estimated the TCM budget
+per-leg, not end-to-end); a JOINT backprop-through-everything tour optimizer (R-N22 composed leverage + crank as
+forward phases); a learned amortized tour-planner (R-N13 style) over the (target inclination, Δv) map.
 
 ## Mission composition — stringing maneuvers together
 
