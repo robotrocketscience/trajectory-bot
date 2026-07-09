@@ -466,10 +466,23 @@ porkchop = phasing metric, primer = DSM metric. **H-N12c PARTIAL:** the v∞-lev
 resonances (7:4, 7:3, 5:1) so the resonant-return mechanism is available, but the greedy energy-max pump doesn't
 land on exact resonances — exact multi-flyby phase-closure (tune flybys to resonances) is the remaining piece.
 
-**Build N — remaining layer (planned).** Amortize the outer loop (learned sequence + launch-window proposer)
-for mission planning — the north-star generalization: map (target, constraints, window) → sequence + warm-start,
-solved by inference + a few diff-sim refinement steps. (Plus, for full grand-tour phasing: tune the v∞-leveraging
-flybys to exact k:n resonances, R-N12c's remaining piece.)
+**Build N R-N13 — amortized mission-planner** (`scripts/amortized_planner.py`). The north-star generalization:
+learn (mission params) → (warm-start decision variables) so a NEW mission is inference + a few diff-sim steps,
+not a full re-search. Family: aim an Earth-departure transfer at a Jupiter flyby point under REAL perturbed
+Sun+Jupiter dynamics; mission θ=(Jupiter arrival angle, TOF); labels from backtracking Gauss-Newton through the
+differentiable rollout; tiny MLP θ→v_dep*. **H-N13a SUPPORTED:** test RMSE 0.035 km/s ≈ 1.8× train, 16× better
+than nearest-neighbour lookup and 148× better than the mean — the solution manifold is smooth and generalizes.
+**H-N13b SUPPORTED (modestly):** MLP warm-start miss@0 is 5× lower than a cold Lambert seed and cuts refinement
+from 3 to 2 Gauss-Newton steps (honest caveat: Newton is superlinear so the step win is small; the 5× lower
+initial residual is the cleaner signal). **H-N13c SUPPORTED (the boundary):** as the target crosses past closest
+approach the solution-map sensitivity ‖∂r_end/∂v‖ grows 82× and conditioning 261× — amortization is
+REGIME-BOUNDED: learnable in the smooth pre-flyby (node-transcription) regime, unlearnable in R-N7's post-flyby
+razor basin. Closes the arc R-N7 (raw gradient can't exploit) → R-N8 (node transcription smooths it) → R-N13 (the
+smoothed regime is exactly the amortizable regime).
+
+**Build N — remaining layer (planned).** Exact multi-flyby resonant phase-closure: tune the v∞-leveraging flybys
+to exact k:n resonances (R-N12c's remaining piece) so a full Voyager-style staircase closes its return phasing,
+not just its energy. (The amortized-proposer north star is delivered and bounded by R-N13.)
 
 ## Mission composition — stringing maneuvers together
 
