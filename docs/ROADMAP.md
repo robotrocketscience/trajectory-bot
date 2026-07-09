@@ -604,18 +604,34 @@ R-N14→N19→N20 was largely a resonance-selection artifact; real best-resonanc
 apoapsis. Honesty scope: cumulative Δv is a VILM quadrature over measured single-leg leverages, not a monolithic
 multi-leg rollout (still the frontier).
 
-**Build N — out-of-plane arc COMPLETE (R-N15 → R-N20), leverage premise CORRECTED (R-N21).** Single-flyby pump (N15) → analytic ceiling + crank
+**Build N R-N22 — leverage-then-crank COMPOSED in one real multi-leg diff-sim tour** (`scripts/real_leverage_crank_tour.py`).
+The monolithic-rollout frontier: compose LEVERAGE (R-N21) + CRANK (R-N18) in ONE real Sun-only RK4 tour with
+real resonant re-encounter closure every leg — the environment-grounded version of R-N20's reduced capstone.
+**H-N22a SUPPORTED:** from v∞₀=8 (base ceiling 15.6°), a 15-leg real leverage staircase (retrograde apoapsis
+burns, 1.50 km/s) pumps v∞ 8→15.24 (ceiling→30.8°, closures ≪ SOI), then a 5-flyby real crank staircase (v∞
+rotated about V_E → |v_out| preserved → real 1-yr-resonance closure) reaches 29.7° > 15.6° base (Δ=+14.1°),
+crank free. **H-N22b SUPPORTED (corrects R-N20's fixed δmax=35°):** the physical δmax(v∞) shrinks as leverage
+climbs v∞ → up to 5× more crank flybys than a fixed 35° (worst at i≈60°). **H-N22c SUPPORTED (corrects R-N18's
+single-circle DIAG):** choosing the best resonance each encounter, the resonance-circle inclination reaches
+within 0.0–0.2° of the free ceiling arcsin(v∞/v_P) — re-encounter is NOT the binding limit; the near-1:1
+resonance dissolves R-N18's throttle. NET: the strategy R-N20 discovered composes end-to-end in the real
+environment; the real binding limit is crank flyby count (per-flyby δmax) + leverage Δv, not re-encounter
+geometry. Honest scope: forward tour (leverage then crank as phases), not a single backprop-through-everything
+joint optimum — that remains the frontier. (Two of three verdicts are corrections surfaced by pre-run probes
+overturning my intuitions; H-N22a first REFUTED on a real perihelion-lift bug, caught and fixed before record.)
+
+**Build N — out-of-plane arc COMPLETE (R-N15 → R-N20), leverage premise CORRECTED (R-N21), composition VERIFIED in the real rollout (R-N22).** Single-flyby pump (N15) → analytic ceiling + crank
 (N16) → diff-sim single-node + inc–energy frontier (N17) → real multi-node tour realizing the ceiling in
 ~θ*/δmax nodes + re-encounter cost (N18) → V∞-leveraging breaking the ceiling for a Δv price (N19) → optimizer
 DISCOVERS the whole leverage-then-crank strategy from a naive objective (N20). Reachable inclination =
 arcsin(v∞/v_P), free; raisable by leveraging at ~2–12× the efficiency of a brute plane change; mission-design
 law v∞ ≥ v_P·sin(i); and the strategy is discoverable, not just derivable. All under the patched-conic model.
 
-**Build N — next frontiers (unplanned, open).** Real multi-body ephemeris tours (R-N11 did one leg); a
-MONOLITHIC multi-leg rollout tour (real coast legs + apoapsis burns + re-encounter phasing composed in ONE
-diff-sim) — R-N21 measured single-leg leverage from the environment and integrated it as a VILM quadrature, but
-composing leverage + crank + real inclined-orbit phasing in one rollout remains open; a learned amortized
-tour-planner (R-N13 style) over the (target inclination, Δv) map.
+**Build N — next frontiers (unplanned, open).** Real multi-body ephemeris tours (R-N11 did one leg); a JOINT
+backprop-through-everything tour optimizer — R-N22 composed leverage + crank as forward PHASES in one real
+rollout, but letting a single optimizer interleave and co-optimize the leverage burns and crank turns (and
+choose the resonances) is open; a learned amortized tour-planner (R-N13 style) over the (target inclination, Δv)
+map.
 
 ## Mission composition — stringing maneuvers together
 
