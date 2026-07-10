@@ -652,23 +652,38 @@ system — the crank/resonance half survives, the leverage half does not; a real
 each post-leverage resonance to re-encounter real Earth (a proper Sims-Longuski VILM with resonance hopping).
 Not an over-claimed refutation: real VILM missions fly leverage — only the naive fixed-1:2 staircase fails.
 
-**Build N — out-of-plane arc: crank/resonance half REALIZED and now VERIFIED against real ephemeris (R-N15 → R-N20, R-N24a/c); leverage premise measured (R-N21), composed in the Sun-only rollout (R-N22), robust to circular Jupiter (R-N23) — but the leverage staircase CORRECTED as an idealization artifact once real ephemeris Earth is used (R-N24b).** Single-flyby pump (N15) → analytic ceiling + crank
+**Build N R-N25 — how much leverage actually survives real ephemeris? CORRECTS R-N24's mechanism AND my own
+prediction** (`scripts/leverage_anatomy.py`). Sized the leverage burn to hold the real-Earth re-encounter within
+SOI (R-N24 used a fixed 0.1 km/s burn). **H-N25a SUPPORTED (my "leverage collapses" prediction REFUTED):** a
+~5 m/s prograde apoapsis burn raises v∞ by 72–187 m/s at miss ~SOI → **marginal L ≈ 15–37** — the textbook
+v∞-leverage SURVIVES real ephemeris; it is NOT a circular-planet artifact. R-N24's "leverage drifts DOWN / dead"
+was an artifact of a burn ~20× too large, overshooting SOI. **H-N25b SUPPORTED:** but the CHAINED pump is
+impractical — sized to hold miss ≤ ½ SOI, v∞ creeps 8→9.7 over ~18 legs then STALLS; sustainable rate ~85 m/s
+v∞/leg (rate-capped by the SOI budget: Δx≈Δv∞·t_enc must stay < SOI), so 8→15 needs ~165 yr. **H-N25c SUPPORTED
+(positive control):** the fixed-|v∞| crank reaches 15.2° ≈ the 15.6° base ceiling under real ephemeris. NET: the
+leverage survives per-leg but is RATE-CAPPED, so R-N24's practical conclusion (single-planet resonant leverage
+can't usefully pump v∞ against real ephemeris) STANDS for a refined reason — a rate cap, not leverage death.
+
+**Build N — out-of-plane arc: crank/resonance half REALIZED and VERIFIED against real ephemeris (R-N15 → R-N20, R-N24a/c, R-N25c); leverage measured (R-N21), composed in the Sun-only rollout (R-N22), robust to circular Jupiter (R-N23) — leverage SURVIVES real ephemeris per-leg (L≈15–37, R-N25a) but is RATE-CAPPED by the real-Earth SOI budget so the pump stalls ~9.7 (R-N25b); R-N24's "artifact"/mechanism corrected by R-N25.** Single-flyby pump (N15) → analytic ceiling + crank
 (N16) → diff-sim single-node + inc–energy frontier (N17) → real multi-node tour realizing the ceiling in
 ~θ*/δmax nodes + re-encounter cost (N18) → V∞-leveraging breaking the ceiling for a Δv price (N19) → optimizer
 DISCOVERS the whole leverage-then-crank strategy from a naive objective (N20). Reachable inclination =
 arcsin(v∞/v_P), free; raisable by leveraging at ~2–12× the efficiency of a brute plane change; mission-design
 law v∞ ≥ v_P·sin(i); and the strategy is discoverable, not just derivable. All under the patched-conic model —
-with the caveat (R-N24) that the LEVERAGE half of the ceiling-raising was partly a circular-Earth artifact and
-needs a co-designed resonance sequence to hold against real ephemeris; the crank/free-ceiling half is verified.
+with the caveat (R-N24 → refined R-N25) that the LEVERAGE half of the ceiling-raising, while REAL against real
+ephemeris (marginal L≈15–37 at the right burn scale), is RATE-CAPPED by the real-Earth SOI budget (~0.085 km/s
+v∞/leg, stalls ~9.7) so it cannot usefully pump v∞ to the target in a single-planet staircase; the crank/free-
+ceiling half is verified against real ephemeris.
 
-**Build N — next frontiers (unplanned, open).** A CO-DESIGNED real-ephemeris VILM tour — resonance-hopping so
-each post-leverage orbit re-encounters real ephemeris Earth (R-N24 showed the naive fixed-1:2 staircase drifts
-off real Earth; this is the corrected frontier, and materially harder); a single accumulating closed-loop
-targeted tour (R-N23/R-N24 estimated the TCM budget per-leg, not end-to-end); a JOINT backprop-through-everything
-tour optimizer (R-N22 composed leverage + crank as forward phases; R-N24 shows a real-ephemeris joint objective
-must include the real-Earth encounter constraint); a learned amortized tour-planner (R-N13 style) over the
-(target inclination, Δv) map. (The full-JPL-ephemeris frontier itself is now CLOSED by R-N24 — fetch-and-cache
-solves the CI-safety tension.)
+**Build N — next frontiers (unplanned, open).** A MULTI-PLANET leverage tour — R-N25 showed single-planet
+(Earth-only) leverage is rate-capped by Earth's SOI budget (~0.085 km/s v∞/leg); a Venus/Mars/Earth VILM could
+lift v∞ faster (larger per-flyby turns at inner planets, more encounters/yr) — the natural way past the single-
+planet rate cap; a single accumulating closed-loop targeted tour (R-N23/R-N24 estimated the TCM budget per-leg,
+not end-to-end); a JOINT backprop-through-everything tour optimizer (R-N22 composed leverage + crank as forward
+phases; R-N24/R-N25 show a real-ephemeris joint objective must include the real-Earth encounter constraint AND
+the SOI-budget rate cap); a learned amortized tour-planner (R-N13 style) over the (target inclination, Δv) map.
+(The full-JPL-ephemeris frontier itself is CLOSED by R-N24/R-N25 — fetch-and-cache solves the CI-safety tension,
+and the single-planet leverage limit is now quantified.)
 
 ## Mission composition — stringing maneuvers together
 
