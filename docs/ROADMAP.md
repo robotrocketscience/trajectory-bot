@@ -633,18 +633,42 @@ correction budget (a null-of-worry, honestly reported). Honest scope: Jupiter ci
 ephemeris — inner planets + Jupiter's inclination/eccentricity neglected); TCM is a per-leg pure-closure
 estimate, not a single accumulating closed-loop targeted tour.
 
-**Build N — out-of-plane arc COMPLETE (R-N15 → R-N20), leverage premise CORRECTED (R-N21), composition VERIFIED in the real rollout (R-N22), robust to a real third body (R-N23).** Single-flyby pump (N15) → analytic ceiling + crank
+**Build N R-N24 — does the composition survive the REAL solar system (full JPL ephemeris)? A CORRECTION round**
+(`scripts/full_ephemeris_tour.py`). Removed the last big idealization: flew the R-N23 per-leg structure against
+real JPL Horizons — eccentric Earth (e=0.0167) + Venus/Mars/Jupiter/Saturn as real heliocentric perturbers
+(Earth = the flyby body → patched-conic, not a point mass), launching from where real Earth actually is and
+re-encountering it by closest approach (not R-N23's cylinder crossing). Network-gated fetch-and-cache
+(`.ephem_cache/`, gitignored); `--verify` offline. **H-N24a SUPPORTED:** the BARE-resonance single-leg residual
+(0.0013–0.0118 AU leverage, 0.0004–0.0025 AU crank) is bounded and ~0.8× R-N23 — real eccentric Earth + inner
+planets are sub-dominant; the un-leveraged resonance re-encounters real Earth about as well as circular Earth.
+**H-N24b REFUTED:** the v∞-pump leverage staircase does NOT survive — open-loop it drifts 8→5.94 DOWN (every leg
+missing real Earth by 3–5× SOI), and closed-loop active targeting still drifts 8→5.13 at a 3.6 km/s targeting
+cost (≫ the 1.5 km/s of leverage burns). **This CORRECTS R-N22 ("leverage composes") and R-N23's H-N23b ("pump
+climbs 8→15.3 unchanged"):** both relied on a circular-Earth cylinder-crossing that treats Earth as present at
+every longitude, masking that each leverage burn shifts the encounter ~0.05 AU OFF real ephemeris Earth.
+**H-N24c SUPPORTED:** re-closing the UNPUMPED resonance to real Earth is cheap (16 m/s/leg ≈ R-N23) — but this
+maintains the bare chain, it does NOT rescue the leverage. NET: the strategy SPLITS against the real solar
+system — the crank/resonance half survives, the leverage half does not; a real v∞-leverage tour must co-design
+each post-leverage resonance to re-encounter real Earth (a proper Sims-Longuski VILM with resonance hopping).
+Not an over-claimed refutation: real VILM missions fly leverage — only the naive fixed-1:2 staircase fails.
+
+**Build N — out-of-plane arc: crank/resonance half REALIZED and now VERIFIED against real ephemeris (R-N15 → R-N20, R-N24a/c); leverage premise measured (R-N21), composed in the Sun-only rollout (R-N22), robust to circular Jupiter (R-N23) — but the leverage staircase CORRECTED as an idealization artifact once real ephemeris Earth is used (R-N24b).** Single-flyby pump (N15) → analytic ceiling + crank
 (N16) → diff-sim single-node + inc–energy frontier (N17) → real multi-node tour realizing the ceiling in
 ~θ*/δmax nodes + re-encounter cost (N18) → V∞-leveraging breaking the ceiling for a Δv price (N19) → optimizer
 DISCOVERS the whole leverage-then-crank strategy from a naive objective (N20). Reachable inclination =
 arcsin(v∞/v_P), free; raisable by leveraging at ~2–12× the efficiency of a brute plane change; mission-design
-law v∞ ≥ v_P·sin(i); and the strategy is discoverable, not just derivable. All under the patched-conic model.
+law v∞ ≥ v_P·sin(i); and the strategy is discoverable, not just derivable. All under the patched-conic model —
+with the caveat (R-N24) that the LEVERAGE half of the ceiling-raising was partly a circular-Earth artifact and
+needs a co-designed resonance sequence to hold against real ephemeris; the crank/free-ceiling half is verified.
 
-**Build N — next frontiers (unplanned, open).** FULL JPL-ephemeris tour (R-N23 tested one perturber, Jupiter,
-circular/coplanar; the real inner planets + Jupiter's inclination/eccentricity need the network-gated Horizons
-fetch — not CI-safe as-is); a single accumulating closed-loop targeted tour (R-N23 estimated the TCM budget
-per-leg, not end-to-end); a JOINT backprop-through-everything tour optimizer (R-N22 composed leverage + crank as
-forward phases); a learned amortized tour-planner (R-N13 style) over the (target inclination, Δv) map.
+**Build N — next frontiers (unplanned, open).** A CO-DESIGNED real-ephemeris VILM tour — resonance-hopping so
+each post-leverage orbit re-encounters real ephemeris Earth (R-N24 showed the naive fixed-1:2 staircase drifts
+off real Earth; this is the corrected frontier, and materially harder); a single accumulating closed-loop
+targeted tour (R-N23/R-N24 estimated the TCM budget per-leg, not end-to-end); a JOINT backprop-through-everything
+tour optimizer (R-N22 composed leverage + crank as forward phases; R-N24 shows a real-ephemeris joint objective
+must include the real-Earth encounter constraint); a learned amortized tour-planner (R-N13 style) over the
+(target inclination, Δv) map. (The full-JPL-ephemeris frontier itself is now CLOSED by R-N24 — fetch-and-cache
+solves the CI-safety tension.)
 
 ## Mission composition — stringing maneuvers together
 
