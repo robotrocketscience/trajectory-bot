@@ -245,7 +245,7 @@ def verify(args):
     print(f"    inclination over the crank: {', '.join(f'{i:.1f}' for i in incs)}° "
           f"(base ceiling arcsin(8/v_P)={ceil0:.1f}°)")
     print(f"    max crank re-encounter miss to REAL Earth: {miss_max:.4f} AU ({miss_max/(SOI_E/AU):.1f}× SOI)")
-    c_ok = inc_max > ceil0 - 1.0 and (max(misses) < 3 * SOI_E)
+    c_ok = bool(misses) and inc_max > ceil0 - 1.0 and (max(misses) < 3 * SOI_E)
     print(f"    → H-N25c {'SUPPORTED' if c_ok else 'REFUTED'}: the crank reaches {inc_max:.1f}° (≈ the {ceil0:.1f}° "
           f"base ceiling) with re-encounters ≈ SOI — the fixed-|v∞| crank survives real ephemeris; the leverage's "
           "rate-cap is SPECIFIC to changing v∞ MAGNITUDE (no magnitude change → no leverage/position coupling).")
