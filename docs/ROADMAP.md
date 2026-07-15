@@ -698,7 +698,7 @@ breaks the cap is OPEN (R-N24's closed-loop post-DSM TCM cost ~3.6 km/s). **R-N2
 (`scripts/postdsm_correction.py`). The correct control acts AFTER the DSM (R-N27): a mid-descent cleanup TCM,
 tested at the right burn scale (R-N24's cost 3.6 km/s but used a 20×-too-large 0.1 km/s DSM). One knob: add a
 post-DSM in-descent TCM (2-D, solved to a FIXED-time null — fixes the R-N27 degeneracy). Metric L_eff =
-Δv∞/(Δv_DSM+Δv_TCM). **H-N28a SUPPORTED:** at DSM=100 m/s the un-corrected leg misses real Earth by 7.7 SOI
+Δv∞/(Δv_DSM+Δv_TCM). **H-N28a SUPPORTED:** at DSM=100 m/s the uncorrected leg misses real Earth by 7.7 SOI
 (R-N27's failure), but a post-DSM TCM (307 m/s) re-closes it to 0.001 SOI — the correctly-timed control works
 where the pre-DSM flyby couldn't. **H-N28b SUPPORTED (corrects my "≤1" lean at the margin):** best within-SOI
 L_eff peaks at only **1.11** (DSM 50/100/200/300 → 1.01/1.11/1.05/0.94), < 3 → NO cheap single-planet escape;
