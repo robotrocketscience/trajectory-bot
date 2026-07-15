@@ -152,7 +152,7 @@ def verify(args):
     b_big = 0.100                                            # ~5-10x the cap-equivalent burn -> de-phases past SOI
     rv_dsm = rv_ap.copy()
     rv_dsm[3:] = rv_dsm[3:] + b_big * vh
-    nomiss, _, _ = closest(rv_dsm, apo_jd)                   # un-corrected (pre-DSM control only) miss
+    nomiss, _, _ = closest(rv_dsm, apo_jd)                   # uncorrected (pre-DSM control only) miss
     tcm_a, miss_a, dvinf_a, _ = corrected_leg(rv_ap, apo_jd, b_big, 0.10, vinf_nat)
     a_ok = nomiss > SOI_E and miss_a < SOI_E
     print(f"\n  H-N28a: DSM={b_big*1000:.0f} m/s (beyond-cap pump). No post-DSM control -> re-encounter miss "
