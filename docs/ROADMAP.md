@@ -664,7 +664,23 @@ v∞/leg (rate-capped by the SOI budget: Δx≈Δv∞·t_enc must stay < SOI), s
 leverage survives per-leg but is RATE-CAPPED, so R-N24's practical conclusion (single-planet resonant leverage
 can't usefully pump v∞ against real ephemeris) STANDS for a refined reason — a rate cap, not leverage death.
 
-**Build N — out-of-plane arc: crank/resonance half REALIZED and VERIFIED against real ephemeris (R-N15 → R-N20, R-N24a/c, R-N25c); leverage measured (R-N21), composed in the Sun-only rollout (R-N22), robust to circular Jupiter (R-N23) — leverage SURVIVES real ephemeris per-leg (L≈15–37, R-N25a) but is RATE-CAPPED by the real-Earth SOI budget so the pump stalls ~9.7 (R-N25b); R-N24's "artifact"/mechanism corrected by R-N25.** Single-flyby pump (N15) → analytic ceiling + crank
+**Build N R-N26 — is R-N25's SOI cap a fixed-RESONANCE artifact or a single-CONTROL limit? CORRECTS my own
+multi-planet premise** (`scripts/resonance_hopping.py`). I had recommended a multi-planet VILM to beat the cap,
+assuming it was a single-*planet* limit. R-N26 tests the premise: one knob, R-N25's fixed-1:2 → free resonance
+choice + wide apoapsis-burn sweep (still single-planet, apoapsis-burn-ONLY = one control, real ephemeris).
+**H-N26a REFUTED (my going-in intuition that resonance-HOPPING breaks the cap was WRONG):** across the whole
+feasible ladder (1:1, 3:2, 2:3, 3:4, 4:5, 1:2) × burn sweep, the best within-SOI re-encounter reaches only
+v∞=8.27 (Δ+0.27) — no hop. **H-N26b SUPPORTED:** the sized within-SOI single-leg Δv∞ is 97–185 m/s for EVERY
+resonance — resonance-INDEPENDENT; the SOI budget, not the resonance, sets the cap. (Integrity: a first
+aggregation counting 2:5/1:3 re-encounters that miss Earth by 1.8–3.8 SOI gave a spurious REFUTED; filtering to
+genuine within-SOI legs — the wrong-regime class R-N25 caught — corrected it.) **H-N26c SUPPORTED (positive
+forward control):** the flyby TURN δ_needed≈Δv∞/v∞ = 0.33–0.61° to null the leverage position shift is ≪
+δmax(v∞)=24–58° across v∞=8→15 (authority 74–95×). NET: the cap is NOT a resonance/planet artifact — it is a
+single-CONTROL limit (one apoapsis burn can't both pump |v∞| AND retarget). The escape is a SECOND control — the
+flyby TURN (the actual gravity assist, |v∞|-preserving) — not more planets. This supersedes the multi-planet
+recommendation; **R-N27 = the chained (flyby-turn + apoapsis-burn) VILM leg** is the two-control test.
+
+**Build N — out-of-plane arc: crank/resonance half REALIZED and VERIFIED against real ephemeris (R-N15 → R-N20, R-N24a/c, R-N25c); leverage measured (R-N21), composed in the Sun-only rollout (R-N22), robust to circular Jupiter (R-N23) — leverage SURVIVES real ephemeris per-leg (L≈15–37, R-N25a) but is RATE-CAPPED by the real-Earth SOI budget so the pump stalls ~9.7 (R-N25b); the rate cap reclassified as a single-CONTROL limit (not resonance/planet-specific), escapable by a second control — the flyby turn — (R-N26); R-N24's "artifact"/mechanism corrected by R-N25, my multi-planet premise by R-N26.** Single-flyby pump (N15) → analytic ceiling + crank
 (N16) → diff-sim single-node + inc–energy frontier (N17) → real multi-node tour realizing the ceiling in
 ~θ*/δmax nodes + re-encounter cost (N18) → V∞-leveraging breaking the ceiling for a Δv price (N19) → optimizer
 DISCOVERS the whole leverage-then-crank strategy from a naive objective (N20). Reachable inclination =
@@ -672,18 +688,24 @@ arcsin(v∞/v_P), free; raisable by leveraging at ~2–12× the efficiency of a 
 law v∞ ≥ v_P·sin(i); and the strategy is discoverable, not just derivable. All under the patched-conic model —
 with the caveat (R-N24 → refined R-N25) that the LEVERAGE half of the ceiling-raising, while REAL against real
 ephemeris (marginal L≈15–37 at the right burn scale), is RATE-CAPPED by the real-Earth SOI budget (~0.085 km/s
-v∞/leg, stalls ~9.7) so it cannot usefully pump v∞ to the target in a single-planet staircase; the crank/free-
-ceiling half is verified against real ephemeris.
+v∞/leg, stalls ~9.7) so it cannot usefully pump v∞ to the target in a single-planet apoapsis-burn-only staircase
+— which R-N26 reclassified as a single-CONTROL limit (resonance/planet-independent), escapable by adding the
+flyby-turn control (R-N27); the crank/free-ceiling half is verified against real ephemeris.
 
-**Build N — next frontiers (unplanned, open).** A MULTI-PLANET leverage tour — R-N25 showed single-planet
-(Earth-only) leverage is rate-capped by Earth's SOI budget (~0.085 km/s v∞/leg); a Venus/Mars/Earth VILM could
-lift v∞ faster (larger per-flyby turns at inner planets, more encounters/yr) — the natural way past the single-
-planet rate cap; a single accumulating closed-loop targeted tour (R-N23/R-N24 estimated the TCM budget per-leg,
-not end-to-end); a JOINT backprop-through-everything tour optimizer (R-N22 composed leverage + crank as forward
-phases; R-N24/R-N25 show a real-ephemeris joint objective must include the real-Earth encounter constraint AND
-the SOI-budget rate cap); a learned amortized tour-planner (R-N13 style) over the (target inclination, Δv) map.
-(The full-JPL-ephemeris frontier itself is CLOSED by R-N24/R-N25 — fetch-and-cache solves the CI-safety tension,
-and the single-planet leverage limit is now quantified.)
+**Build N — next frontiers (open).** **R-N27 (next, supersedes the multi-planet recommendation): the chained
+(flyby-turn + apoapsis-burn) VILM leg against real ephemeris.** R-N26 corrected the premise — R-N25's SOI rate
+cap is a single-CONTROL limit (one apoapsis burn can't both pump |v∞| and retarget), NOT a single-planet one, so
+the escape is a SECOND control (the flyby TURN, |v∞|-preserving), which R-N26c showed has 74–95× the first-order
+authority needed. R-N27 builds the two-control chained targeting to test whether that actually breaks the cap —
+and whether the optimizer DISCOVERS the gravity-assist retargeting (north star). A MULTI-PLANET tour then matters
+only insofar as each planet adds another turn control (larger δmax at inner planets), NOT as an escape from a
+single-planet cap. Other open frontiers: a single accumulating closed-loop targeted tour (R-N23/R-N24 estimated
+the TCM budget per-leg, not end-to-end); a JOINT backprop-through-everything tour optimizer (R-N22 composed
+leverage + crank as forward phases; R-N24/R-N25/R-N26 show a real-ephemeris joint objective must include the
+real-Earth encounter constraint, the SOI-budget rate cap, AND the flyby-turn retargeting control); a learned
+amortized tour-planner (R-N13 style) over the (target inclination, Δv) map. (The full-JPL-ephemeris frontier
+itself is CLOSED by R-N24/R-N25 — fetch-and-cache solves the CI-safety tension, and the single-planet leverage
+limit is now quantified as a single-control cap.)
 
 ## Mission composition — stringing maneuvers together
 
