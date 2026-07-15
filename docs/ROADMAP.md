@@ -680,7 +680,21 @@ single-CONTROL limit (one apoapsis burn can't both pump |v∞| AND retarget). Th
 flyby TURN (the actual gravity assist, |v∞|-preserving) — not more planets. This supersedes the multi-planet
 recommendation; **R-N27 = the chained (flyby-turn + apoapsis-burn) VILM leg** is the two-control test.
 
-**Build N — out-of-plane arc: crank/resonance half REALIZED and VERIFIED against real ephemeris (R-N15 → R-N20, R-N24a/c, R-N25c); leverage measured (R-N21), composed in the Sun-only rollout (R-N22), robust to circular Jupiter (R-N23) — leverage SURVIVES real ephemeris per-leg (L≈15–37, R-N25a) but is RATE-CAPPED by the real-Earth SOI budget so the pump stalls ~9.7 (R-N25b); the rate cap reclassified as a single-CONTROL limit (not resonance/planet-specific), escapable by a second control — the flyby turn — (R-N26); R-N24's "artifact"/mechanism corrected by R-N25, my multi-planet premise by R-N26.** Single-flyby pump (N15) → analytic ceiling + crank
+**Build N R-N27 — does the flyby TURN actually break the SOI cap? CORRECTS R-N26c's forward claim**
+(`scripts/flyby_leverage.py`). R-N26c claimed (via a LINEARIZED authority check) the flyby turn's 74–95× margin
+breaks the cap; R-N27 tests it in the full nonlinear real-ephemeris model. One knob: add the flyby-turn control
+to the apoapsis-burn leg. **H-N27a REFUTED (R-N26c's forward claim WRONG):** flyby-reachable resonances (outgoing
+turn ≤ δmax=57.6°) give within-SOI Δv∞ of only 97–185 m/s — best 185 ≪ 300; the flyby does NOT break the cap.
+**H-N27b SUPPORTED:** on 1:2 the within-SOI pump is monotone-capped at ~256 m/s (DSM 0→5→10 m/s: +185→+256→+330
+BUSTS SOI); no reachable resonance escapes it. **H-N27c SUPPORTED (positive control):** sweeping the turn over
+±δmax moves the outgoing period 0.80→4.26 yr (spans ~7 resonances) — the turn is strongly authoritative — yet the
+pump stays capped at each. NET: the flyby turn is REAL but MIS-TIMED — it acts FIRST (sets the outgoing resonance,
+cap-neutral per R-N26b), then the DSM shifts the END-of-leg re-encounter; a control that PRECEDES that shift
+can't correct it. R-N25 (rate cap) → R-N26 (single-CONTROL limit) → R-N27 (the flyby turn is the WRONG-timed 2nd
+control). The correct control acts AFTER the DSM — a cleanup TCM or the next-body flyby — whether that CHEAPLY
+breaks the cap is OPEN (R-N24's closed-loop post-DSM TCM cost ~3.6 km/s). **R-N28 = the post-DSM correction.**
+
+**Build N — out-of-plane arc: crank/resonance half REALIZED and VERIFIED against real ephemeris (R-N15 → R-N20, R-N24a/c, R-N25c); leverage measured (R-N21), composed in the Sun-only rollout (R-N22), robust to circular Jupiter (R-N23) — leverage SURVIVES real ephemeris per-leg (L≈15–37, R-N25a) but is RATE-CAPPED by the real-Earth SOI budget so the pump stalls ~9.7 (R-N25b); the rate cap reclassified as a single-CONTROL limit (not resonance/planet-specific), escapable by a second control — but R-N27 showed the flyby TURN is the WRONG-timed 2nd control (it precedes the DSM's de-phasing, so it only picks the cap-neutral resonance); the correct control acts AFTER the DSM (R-N28); R-N24's "artifact"/mechanism corrected by R-N25, my multi-planet premise by R-N26, R-N26c's flyby-turn claim by R-N27.** Single-flyby pump (N15) → analytic ceiling + crank
 (N16) → diff-sim single-node + inc–energy frontier (N17) → real multi-node tour realizing the ceiling in
 ~θ*/δmax nodes + re-encounter cost (N18) → V∞-leveraging breaking the ceiling for a Δv price (N19) → optimizer
 DISCOVERS the whole leverage-then-crank strategy from a naive objective (N20). Reachable inclination =
@@ -689,20 +703,22 @@ law v∞ ≥ v_P·sin(i); and the strategy is discoverable, not just derivable. 
 with the caveat (R-N24 → refined R-N25) that the LEVERAGE half of the ceiling-raising, while REAL against real
 ephemeris (marginal L≈15–37 at the right burn scale), is RATE-CAPPED by the real-Earth SOI budget (~0.085 km/s
 v∞/leg, stalls ~9.7) so it cannot usefully pump v∞ to the target in a single-planet apoapsis-burn-only staircase
-— which R-N26 reclassified as a single-CONTROL limit (resonance/planet-independent), escapable by adding the
-flyby-turn control (R-N27); the crank/free-ceiling half is verified against real ephemeris.
+— which R-N26 reclassified as a single-CONTROL limit (resonance/planet-independent); R-N27 then showed the flyby
+TURN is the WRONG-timed second control (it precedes the DSM's de-phasing) so it does NOT break the cap; the
+crank/free-ceiling half is verified against real ephemeris.
 
-**Build N — next frontiers (open).** **R-N27 (next, supersedes the multi-planet recommendation): the chained
-(flyby-turn + apoapsis-burn) VILM leg against real ephemeris.** R-N26 corrected the premise — R-N25's SOI rate
-cap is a single-CONTROL limit (one apoapsis burn can't both pump |v∞| and retarget), NOT a single-planet one, so
-the escape is a SECOND control (the flyby TURN, |v∞|-preserving), which R-N26c showed has 74–95× the first-order
-authority needed. R-N27 builds the two-control chained targeting to test whether that actually breaks the cap —
-and whether the optimizer DISCOVERS the gravity-assist retargeting (north star). A MULTI-PLANET tour then matters
-only insofar as each planet adds another turn control (larger δmax at inner planets), NOT as an escape from a
-single-planet cap. Other open frontiers: a single accumulating closed-loop targeted tour (R-N23/R-N24 estimated
-the TCM budget per-leg, not end-to-end); a JOINT backprop-through-everything tour optimizer (R-N22 composed
-leverage + crank as forward phases; R-N24/R-N25/R-N26 show a real-ephemeris joint objective must include the
-real-Earth encounter constraint, the SOI-budget rate cap, AND the flyby-turn retargeting control); a learned
+**Build N — next frontiers (open).** **R-N28 (next): the POST-DSM correction — the correctly-timed second
+control.** R-N25→R-N26→R-N27 refined the single-planet limit three times: rate cap → single-CONTROL limit → the
+flyby turn is the wrong-timed 2nd control (it sets the cap-neutral resonance BEFORE the DSM de-phases the
+re-encounter, so it can't correct it). The correct control acts AFTER the DSM: (a) a cleanup TCM (single-planet,
+properly-scaled + regularized — the naive Gauss-Newton solve was degenerate in R-N27 probing and deferred), or
+(b) the NEXT-body flyby (multi-planet — a fresh flyby AFTER the DSM redirects the pumped craft). Whether either
+CHEAPLY breaks the cap is genuinely open: R-N24's closed-loop post-DSM TCM cost ~3.6 km/s and still didn't pump,
+so a naive TCM may be expensive; the effective leverage L_eff = Δv∞/(Δv_DSM+Δv_correction) is the honest metric.
+Other open frontiers: a single accumulating closed-loop targeted tour (R-N23/R-N24 estimated the TCM budget
+per-leg, not end-to-end); a JOINT backprop-through-everything tour optimizer (R-N22 composed leverage + crank as
+forward phases; R-N24–R-N27 show a real-ephemeris joint objective must include the real-Earth encounter
+constraint, the SOI-budget rate cap, and the post-DSM correction — NOT the pre-DSM flyby turn); a learned
 amortized tour-planner (R-N13 style) over the (target inclination, Δv) map. (The full-JPL-ephemeris frontier
 itself is CLOSED by R-N24/R-N25 — fetch-and-cache solves the CI-safety tension, and the single-planet leverage
 limit is now quantified as a single-control cap.)
