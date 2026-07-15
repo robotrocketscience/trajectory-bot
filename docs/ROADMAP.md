@@ -724,7 +724,19 @@ sweep before recording. HONEST CAVEAT: the connectivity is GEOMETRIC; real-ephem
 handoffs to launch windows, so this bounds the free-budget RATE, not the windowed cadence. **R-N30 = the full
 chained windowed tour.**
 
-**Build N — out-of-plane arc: crank/resonance half REALIZED and VERIFIED against real ephemeris (R-N15 → R-N20, R-N24a/c, R-N25c); leverage measured (R-N21), composed in the Sun-only rollout (R-N22), robust to circular Jupiter (R-N23) — leverage SURVIVES real ephemeris per-leg (L≈15–37, R-N25a) but is RATE-CAPPED by the real-Earth SOI budget so the pump stalls ~9.7 (R-N25b); the rate cap reclassified as a single-CONTROL limit (not resonance/planet-specific), escapable by a second control — but R-N27 showed the flyby TURN is the WRONG-timed 2nd control (it precedes the DSM's de-phasing, so it only picks the cap-neutral resonance); the correct control acts AFTER the DSM — R-N28 confirmed the post-DSM cleanup TCM re-closes a beyond-cap pump and breaks the SOI RATE cap (pump ~10× the ~85 m/s/leg, up to ~860 m/s) but only at L_eff≈1.1 (a Δv-for-time trade, no cheap escape), so the free leverage is SOI-budget-bounded and MULTI-PLANET is the real fast-and-cheap escape — R-N29 confirmed it (Venus/Earth/Mars each a comparable within-SOI free budget, thousands of ballistic Tisserand handoffs between adjacent planets, inner-planet Venus pumps ~1.7× faster/yr than Earth) but corrected the mechanism from "additive budgets" to "inner planets pump faster + ballistic handoff to reach them"; R-N24's "artifact"/mechanism corrected by R-N25, my multi-planet premise by R-N26, R-N26c's flyby-turn claim by R-N27, my "L_eff≤1" lean by R-N28 (peaks ~1.1), my "additive budgets" framing by R-N29.** Single-flyby pump (N15) → analytic ceiling + crank
+**Build N R-N30 — does real-ephemeris PHASING preserve the ballistic multi-planet handoff, or eat it?**
+(`scripts/handoff_phasing.py`). Tests R-N29's open caveat (its Tisserand connectivity was GEOMETRIC). One knob:
+phasing-free geometry → the real-ephemeris windowed handoff. A Lambert transfer Earth→planet hits the REAL planet
+EXACTLY (phasing satisfied by construction), so only v∞-usability remains. **H-N30a SUPPORTED:** usable ballistic
+handoffs exist for both Earth↔Venus and Earth↔Mars (best v∞ ~3 km/s at both ends). **H-N30b SUPPORTED:** they are
+ABUNDANT — **53% Venus / 40% Mars** of epochs (≫ 10%), not rare windows, because the v∞-pump has no fixed endpoint
+so any get-there transfer works. **H-N30c SUPPORTED:** the handoff is FREE (Lambert hits the planet exactly, zero
+targeting Δv) and FLEXIBLE (usable departure v∞ spans 3.0–7.9/3.3–7.1 km/s), matching a range of pump-exit v∞
+without a burn. NET: phasing does NOT eat the multi-planet advantage — my going-in lean REFUTED. R-N29's
+conclusion survives real phasing: a Venus-inclusive tour reaches the faster inner-planet pump for free. The full
+sustained multi-decade pump-handoff-pump tour is **R-N31**.
+
+**Build N — out-of-plane arc: crank/resonance half REALIZED and VERIFIED against real ephemeris (R-N15 → R-N20, R-N24a/c, R-N25c); leverage measured (R-N21), composed in the Sun-only rollout (R-N22), robust to circular Jupiter (R-N23) — leverage SURVIVES real ephemeris per-leg (L≈15–37, R-N25a) but is RATE-CAPPED by the real-Earth SOI budget so the pump stalls ~9.7 (R-N25b); the rate cap reclassified as a single-CONTROL limit (not resonance/planet-specific), escapable by a second control — but R-N27 showed the flyby TURN is the WRONG-timed 2nd control (it precedes the DSM's de-phasing, so it only picks the cap-neutral resonance); the correct control acts AFTER the DSM — R-N28 confirmed the post-DSM cleanup TCM re-closes a beyond-cap pump and breaks the SOI RATE cap (pump ~10× the ~85 m/s/leg, up to ~860 m/s) but only at L_eff≈1.1 (a Δv-for-time trade, no cheap escape), so the free leverage is SOI-budget-bounded and MULTI-PLANET is the real fast-and-cheap escape — R-N29 confirmed it (Venus/Earth/Mars each a comparable within-SOI free budget, thousands of ballistic Tisserand handoffs between adjacent planets, inner-planet Venus pumps ~1.7× faster/yr than Earth) but corrected the mechanism from "additive budgets" to "inner planets pump faster + ballistic handoff to reach them"; R-N30 confirmed that ballistic handoff SURVIVES real phasing (Lambert Earth→Venus/Mars hits the real planet exactly with usable v∞ at 40–53% of epochs, free and abundant — phasing is benign because the v∞-pump has no fixed endpoint); R-N24's "artifact"/mechanism corrected by R-N25, my multi-planet premise by R-N26, R-N26c's flyby-turn claim by R-N27, my "L_eff≤1" lean by R-N28 (peaks ~1.1), my "additive budgets" framing by R-N29, my "phasing eats it" lean by R-N30.** Single-flyby pump (N15) → analytic ceiling + crank
 (N16) → diff-sim single-node + inc–energy frontier (N17) → real multi-node tour realizing the ceiling in
 ~θ*/δmax nodes + re-encounter cost (N18) → V∞-leveraging breaking the ceiling for a Δv price (N19) → optimizer
 DISCOVERS the whole leverage-then-crank strategy from a naive objective (N20). Reachable inclination =
@@ -741,14 +753,16 @@ the multi-planet escape (comparable per-planet free budgets, ballistic Tisserand
 ~1.7× faster/yr) with a corrected mechanism ("inner planets pump faster + ballistic handoff", not "additive
 budgets"); the crank/free-ceiling half is verified against real ephemeris.
 
-**Build N — next frontiers (open).** **R-N30 (next): the full chained WINDOWED multi-planet tour.** R-N25→R-N29
-closed the "why multi-planet" question: rate cap → single-CONTROL limit → flyby turn wrong-timed → post-DSM
-cleanup breaks the RATE cap at L_eff≈1.1 (no cheap escape) → the cheap fast pump is MULTI-PLANET, and R-N29
-confirmed the primitives (comparable per-planet free budgets + thousands of ballistic Tisserand connectors +
-inner-planet Venus ~1.7× faster/yr). R-N29's open piece is PHASING: its connectivity is geometric, so a real
-tour must land the ballistic handoffs on launch windows where both planets are present. R-N30 = build the chained
-windowed Venus↔Earth↔Mars tour against real ephemeris, honoring phasing, and measure the actual v∞-pump cadence
-(m/s/yr) vs R-N29's phasing-free rate bound. Other open frontiers: a single accumulating closed-loop targeted tour
+**Build N — next frontiers (open).** **R-N31 (next): the full chained multi-decade multi-planet tour.** R-N25→R-N30
+closed the multi-planet feasibility case: rate cap → single-CONTROL limit → flyby turn wrong-timed → post-DSM
+cleanup breaks the RATE cap at L_eff≈1.1 (no cheap escape) → the cheap fast pump is MULTI-PLANET (inner planets
+pump faster + ballistic Tisserand handoff, R-N29) → and that handoff SURVIVES real phasing (free and abundant,
+R-N30, because the v∞-pump has no fixed endpoint). R-N30's open piece is the SUSTAINED accumulation: it verified
+the single Earth↔planet handoff, not a multi-decade pump-handoff-pump tour that raises v∞ leg over leg while
+honoring the v∞-ladder connectivity as it climbs (a higher v∞ may disconnect the planets). R-N31 = build that
+chained tour against real ephemeris and measure the realized v∞-pump cadence (m/s/yr) and inclination reach vs
+R-N29's phasing-free bound — and ideally have the differentiable optimizer DISCOVER it (the north star, one level
+past R-N20's single-planet discovery). Other open frontiers: a single accumulating closed-loop targeted tour
 (R-N23/R-N24 estimated the TCM budget per-leg, not end-to-end); a JOINT backprop-through-everything tour optimizer
 (R-N22 composed leverage + crank as forward phases; R-N24–R-N28 show a real-ephemeris joint objective must include
 the real-Earth encounter constraint, the SOI-budget rate cap, and the post-DSM correction — NOT the pre-DSM flyby
