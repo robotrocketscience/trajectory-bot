@@ -63,11 +63,11 @@ def porkchop(target, sjd, t0_step=20, span=1200):
     for de in np.arange(0, span, t0_step):
         best = None
         for tof in TOFS[target]:
-            try:
+            try:                                            # tolerate only degenerate/non-convergent geometries
                 vd, va = vinf_pair(target, sjd + de, float(tof))
-            except Exception:
+            except (ValueError, FloatingPointError, np.linalg.LinAlgError):
                 continue
-            if not (np.isfinite(vd) and np.isfinite(va)):
+            if not (np.isfinite(vd) and np.isfinite(va)):    # non-convergent Lambert returns NaN, not a raise
                 continue
             if best is None or max(vd, va) < max(best[0], best[1]):
                 best = (vd, va)
