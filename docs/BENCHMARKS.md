@@ -73,3 +73,10 @@ or published values), (b) deep-space maneuvers / trajectory-correction maneuvers
 This benchmark is the payoff of the Tier-3 ephemeris N-body decision (see
 `docs/ROADMAP.md`): it lets us demonstrate real optimality — or report its
 absence — against non-ML, professionally flown solutions.
+
+The differentiable N-body engine this benchmark needs is now built and verified
+(`scripts/nbody_sim.py`; Kepler closure `9e-13`, Lambert recovery `1.24e-11`). The
+"can the agent discover an assist?" question has since been explored in depth on the
+gravity-assist side — the inclination-ceiling law, V∞-leverage, and its real-Earth
+rate cap — summarized in [`GRAVITY_ASSIST.md`](GRAVITY_ASSIST.md). The flown-mission
+Δv comparison in this document remains open work.
