@@ -68,6 +68,8 @@ def incoming_phi(V, jd, n=6000):
     rv0, _ = L.launch_exact(V, 1, 2, jd)
     P = _period(rv0)
     _, traj = F.propagate_ephem(rv0, jd, P, n)
+    # jj uses the campaign-wide convention (jj[k]=jd+k·dt); shared with R-N24/25/26 + sized_leverage_leg so
+    # cross-round miss numbers stay apples-to-apples. The ~1-step (~0.12 d, ~0.2·SOI) offset flips no verdict.
     jj = jd + (np.arange(n) * (P / n)) / DAY
     eph_e = F._load("earth", False)
     d = np.linalg.norm(traj[:, :3] - F._sample_r(eph_e, jj), axis=1)
@@ -110,7 +112,7 @@ def dsm_leg(V, p, q, jd, b, n=6000):
     rv_ap[3:] = rv_ap[3:] + b * vh
     P2 = _period(rv_ap)
     _, tj = F.propagate_ephem(rv_ap, apo_jd, P2, n)
-    jj = apo_jd + (np.arange(n) * (P2 / n)) / DAY
+    jj = apo_jd + (np.arange(n) * (P2 / n)) / DAY            # campaign-wide convention (see incoming_phi note)
     eph_e = F._load("earth", False)
     d = np.linalg.norm(tj[:, :3] - F._sample_r(eph_e, jj), axis=1)
     h = int(0.30 * n)
