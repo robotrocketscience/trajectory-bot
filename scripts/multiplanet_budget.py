@@ -194,7 +194,7 @@ def verify(args):
 
     # ---- H-N29a: per-planet best within-SOI free budget (swept over resonance + burn sign), and its per-YEAR rate ----
     print("\n  H-N29a: per-planet BEST within-SOI free pump budget (over resonances 1:1/1:2/2:3/3:4, both burn signs):")
-    print(f"    {'planet':>7} {'year(d)':>8} {'best Δv∞/leg(m/s)':>17} {'best res':>9} {'free rate(m/s/yr)':>17}")
+    print(f"    {'planet':>7} {'year(d)':>8} {'best Δv∞/leg(m/s)':>17} {'rate res':>9} {'free rate(m/s/yr)':>17}")
     rates = {}
     caps = {}
     for pl in ("venus", "earth", "mars"):
@@ -211,12 +211,15 @@ def verify(args):
     # ---- H-N29b: Tisserand connectivity (ballistic handoff exists) ----
     print("\n  H-N29b: Tisserand connectivity — orbits crossing both planets at usable v inf (3–15 km/s):")
     conn_ok = True
+    connected = {"earth"}                                    # Earth is the launch planet; grow via ballistic pairs
     for (p1, p2) in [("venus", "earth"), ("earth", "mars")]:
         cnt, best = tisserand_overlap(p1, p2)
         if cnt == 0 or best is None:
             conn_ok = False
             print(f"    {p1}<->{p2}: NO ballistic connector")
             continue
+        if p1 in connected or p2 in connected:               # reachable iff connected to the launch planet
+            connected.update((p1, p2))
         print(f"    {p1}<->{p2}: {cnt} connectors; cheapest a={best[0]:.2f} AU e={best[1]:.2f} → "
               f"v inf {best[2]:.1f}@{p1}, {best[3]:.1f}@{p2}")
     print(f"    → H-N29b {'SUPPORTED' if conn_ok else 'REFUTED'}: adjacent planets' orbits overlap at usable v inf "
@@ -225,7 +228,8 @@ def verify(args):
     # ---- H-N29c: best free pump rate across ballistically-connected planets vs single-planet Earth ----
     print("\n  H-N29c: best free pump RATE (m/s v inf per YEAR) across the ballistically-connected planets:")
     earth_rate = rates.get("earth", 0.0)
-    reachable = {pl: rates[pl] for pl in ("venus", "earth", "mars") if pl in rates}   # all connected per H-N29b
+    # only planets ballistically connected to the launch planet (Earth) count — gated on H-N29b, not assumed
+    reachable = {pl: rates[pl] for pl in ("venus", "earth", "mars") if pl in rates and pl in connected}
     best_pl = max(reachable, key=lambda k: reachable[k]) if reachable else None
     for pl in ("venus", "earth", "mars"):
         print(f"    {pl:>7}: {rates.get(pl, 0.0):.0f} m/s/yr")

@@ -753,11 +753,6 @@ windowed Venus↔Earth↔Mars tour against real ephemeris, honoring phasing, and
 (R-N22 composed leverage + crank as forward phases; R-N24–R-N28 show a real-ephemeris joint objective must include
 the real-Earth encounter constraint, the SOI-budget rate cap, and the post-DSM correction — NOT the pre-DSM flyby
 turn); a learned amortized tour-planner (R-N13 style) over the (target inclination, Δv) map. (The
-full-JPL-ephemeris frontier itself is CLOSED by R-N24/R-N25 — fetch-and-cache solves the CI-safety tension, and the a single accumulating closed-loop targeted tour
-(R-N23/R-N24 estimated the TCM budget per-leg, not end-to-end); a JOINT backprop-through-everything tour optimizer
-(R-N22 composed leverage + crank as forward phases; R-N24–R-N28 show a real-ephemeris joint objective must include
-the real-Earth encounter constraint, the SOI-budget rate cap, and the post-DSM correction — NOT the pre-DSM flyby
-turn); a learned amortized tour-planner (R-N13 style) over the (target inclination, Δv) map. (The
 full-JPL-ephemeris frontier itself is CLOSED by R-N24/R-N25 — fetch-and-cache solves the CI-safety tension, and the
 single-planet leverage limit is now fully quantified: a SOI-budget rate cap, broken only by a Δv-for-time trade or
 by adding planets.)
