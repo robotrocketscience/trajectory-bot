@@ -49,6 +49,11 @@ DAY = F.DAY
 V_P = F.V_E                              # planet (Earth) orbital speed, 29.785 km/s
 
 
+def _ceil_deg(v):
+    """Kinematic inclination ceiling arcsin(v∞/v_P) in degrees, clipped for numerical safety."""
+    return np.degrees(np.arcsin(np.clip(v / V_P, 0.0, 1.0)))
+
+
 def _grid(ax):
     ax.grid(True, color=GRID, lw=0.6, alpha=0.7)
     ax.set_axisbelow(True)
@@ -62,7 +67,7 @@ def fig_inclination(sjd):
 
     # panel A: the ceiling law + the crank ladder at v∞ = 8
     vv = np.linspace(0, V_P, 400)
-    axA.plot(vv, np.degrees(np.arcsin(np.clip(vv / V_P, 0, 1))), color=INK, lw=2.2,
+    axA.plot(vv, _ceil_deg(vv), color=INK, lw=2.2,
              label=r"free ceiling  $\arcsin(v_\infty/v_P)$")
     alphas = np.linspace(0.0, np.pi / 2, 7)
     incs = []
@@ -71,16 +76,15 @@ def fig_inclination(sjd):
         incs.append(inc if inc is not None else np.nan)
     axA.plot(np.full(len(incs), 8.0), incs, "o-", color=CRANK, lw=1.6, ms=5, zorder=6,
              label="crank at $v_\\infty$=8 (same-body flybys)")
-    ceil8 = np.degrees(np.arcsin(8.0 / V_P))
+    ceil8 = _ceil_deg(8.0)
     axA.annotate("crank walks up to\nthe free ceiling", xy=(8.0, ceil8), xytext=(2.0, 33),
                  fontsize=8.5, color=CRANK,
                  arrowprops=dict(arrowstyle="->", color=CRANK, lw=1.1))
     # leverage pumps v∞ to the right (rate-capped 8->9.7, budget-limited beyond)
-    axA.add_patch(FancyArrowPatch((8.0, ceil8), (9.7, np.degrees(np.arcsin(9.7 / V_P))),
+    axA.add_patch(FancyArrowPatch((8.0, ceil8), (9.7, _ceil_deg(9.7)),
                                   arrowstyle="-|>", mutation_scale=12, color=LEV, lw=1.8, zorder=7))
-    axA.plot([9.7, 15.0], [np.degrees(np.arcsin(9.7 / V_P)), np.degrees(np.arcsin(15.0 / V_P))],
-             "--", color=LEV, lw=1.4, alpha=0.8)
-    axA.annotate("leverage pumps $v_\\infty$\n(rate-capped ~9.7; budget beyond)", xy=(11, np.degrees(np.arcsin(11 / V_P))),
+    axA.plot([9.7, 15.0], [_ceil_deg(9.7), _ceil_deg(15.0)], "--", color=LEV, lw=1.4, alpha=0.8)
+    axA.annotate("leverage pumps $v_\\infty$\n(rate-capped ~9.7; budget beyond)", xy=(11, _ceil_deg(11)),
                  xytext=(13.5, 24), fontsize=8.5, color=LEV,
                  arrowprops=dict(arrowstyle="->", color=LEV, lw=1))
     axA.set_xlabel("hyperbolic excess speed $v_\\infty$ (km/s)")
@@ -202,10 +206,11 @@ def fig_leverage_cap(sjd):
     axB.scatter(dvinf[~within], misses[~within], color=LEV, s=38, zorder=3, label="misses Earth (> SOI)")
     axB.axhline(1.0, color=INK, ls=":", lw=1)
     axB.text(20, 1.06, "Earth SOI (re-encounter must land inside)", fontsize=8, color=INK, alpha=0.75)
-    cap = dvinf[within].max()
-    axB.axvline(cap, color=CRANK, ls="--", lw=1.2, alpha=0.8)
-    axB.annotate(f"per-leg cap ≈ {cap:.0f} m/s", xy=(cap, 0.4), xytext=(cap - 250, 0.5),
-                 fontsize=8.8, color=CRANK, arrowprops=dict(arrowstyle="->", color=CRANK, lw=1))
+    if within.any():
+        cap = float(dvinf[within].max())
+        axB.axvline(cap, color=CRANK, ls="--", lw=1.2, alpha=0.8)
+        axB.annotate(f"per-leg cap ≈ {cap:.0f} m/s", xy=(cap, 0.4), xytext=(cap - 250, 0.5),
+                     fontsize=8.8, color=CRANK, arrowprops=dict(arrowstyle="->", color=CRANK, lw=1))
     axB.set_xlabel("$v_\\infty$ pumped this leg (m/s)")
     axB.set_ylabel("re-encounter miss (× Earth SOI)")
     axB.set_title("...but the SOI budget rate-caps the pump", fontsize=10.5)
