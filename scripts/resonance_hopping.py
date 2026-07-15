@@ -119,10 +119,14 @@ def verify(args):
         best_overall = max(best_overall, bv)
         print(f"    {f'{p}:{q}':>6} {bv:19.2f} {bv - vinf0:+18.2f}")
     a_hop = best_overall >= vinf0 + 0.5                       # REFUTE-BY the refutation: a real hop exists
-    print(f"    → H-N26a {'SUPPORTED (hop found)' if a_hop else 'REFUTED'}: best within-SOI re-encounter across the "
-          f"whole ladder reaches v∞={best_overall:.2f} (Δ{best_overall-vinf0:+.2f}). My going-in intuition "
-          f"({'held' if a_hop else 'was WRONG'}): apoapsis-only resonance choice "
-          f"{'breaks' if a_hop else 'does NOT break'} the cap.")
+    if best_overall <= 0.0:                                   # no feasible within-SOI re-encounter measured at all
+        a_hop = None
+        print("    → H-N26a INCONCLUSIVE: no feasible within-SOI re-encounter across the ladder (nothing measured).")
+    else:
+        print(f"    → H-N26a {'SUPPORTED (hop found)' if a_hop else 'REFUTED'}: best within-SOI re-encounter across "
+              f"the whole ladder reaches v∞={best_overall:.2f} (Δ{best_overall-vinf0:+.2f}). My going-in intuition "
+              f"({'held' if a_hop else 'was WRONG'}): apoapsis-only resonance choice "
+              f"{'breaks' if a_hop else 'does NOT break'} the cap.")
 
     # ---- H-N26b: is the cap resonance-INDEPENDENT? sized within-SOI Δv∞/leg across the ladder ----
     print("\n  H-N26b: sized within-SOI Δv∞/leg (burn bisected to miss=½·SOI) per feasible resonance:")
@@ -139,12 +143,17 @@ def verify(args):
             rates.append(dv)
         note = "" if within else "excluded: miss≥SOI (no within-SOI re-encounter)"
         print(f"    {f'{p}:{q}':>6} {burn*1000:9.1f} {dv:+9.1f} {miss/SOI_E:9.2f}   {note}")
-    rate_max = max(rates) if rates else 0.0
-    b_ok = rate_max < 300.0                                   # REFUTE-BY: some resonance ≥0.3 km/s/leg
-    msg_b = ("≈ the ~85 m/s cap — resonance-INDEPENDENT; the SOI budget, not the resonance, sets the cap → it is "
-             "a single-CONTROL limit") if b_ok else "≥300 m/s — the cap IS resonance-specific"
-    print(f"    → H-N26b {'SUPPORTED' if b_ok else 'REFUTED'}: max within-SOI Δv∞/leg across the ladder = "
-          f"{rate_max:.0f} m/s ({msg_b}).")
+    if not rates:                                            # no within-SOI positive-Δv∞ leg → nothing to bound
+        b_ok = None
+        rate_max = 0.0
+        print("    → H-N26b INCONCLUSIVE: no within-SOI positive-Δv∞ leg across the ladder (no cap measured).")
+    else:
+        rate_max = max(rates)
+        b_ok = rate_max < 300.0                               # REFUTE-BY: some resonance ≥0.3 km/s/leg
+        msg_b = ("≈ the ~85 m/s cap — resonance-INDEPENDENT; the SOI budget, not the resonance, sets the cap → it "
+                 "is a single-CONTROL limit") if b_ok else "≥300 m/s — the cap IS resonance-specific"
+        print(f"    → H-N26b {'SUPPORTED' if b_ok else 'REFUTED'}: max within-SOI Δv∞/leg across the ladder = "
+              f"{rate_max:.0f} m/s ({msg_b}).")
 
     # ---- H-N26c: POSITIVE forward control — does the flyby TURN have authority to break the cap? ----
     print("\n  H-N26c: flyby-turn authority — δ_needed to null the leverage position shift vs δmax(v∞), v∞=8→15:")
@@ -164,8 +173,9 @@ def verify(args):
           "leverage position shift — a SECOND control (R-N27's flyby turn) is not ruled out from breaking the cap "
           "(first-order authority check; R-N27 must build the chained (δ,burn) targeting to confirm).")
 
-    print(f"\n  → verdicts: H-N26a {'SUPPORTED' if a_hop else 'REFUTED'}, "
-          f"H-N26b {'SUPPORTED' if b_ok else 'REFUTED'}, H-N26c {'SUPPORTED' if c_ok else 'REFUTED'}")
+    def _v(x):
+        return "INCONCLUSIVE" if x is None else ("SUPPORTED" if x else "REFUTED")
+    print(f"\n  → verdicts: H-N26a {_v(a_hop)}, H-N26b {_v(b_ok)}, H-N26c {_v(c_ok)}")
     print("  NET (corrects my own multi-planet premise): my going-in intuition — that single-planet resonance-")
     print("    HOPPING would break R-N25's SOI rate cap — is REFUTED. Under apoapsis-burn-only control, free")
     print("    resonance choice does NOT break the cap: every within-SOI re-encounter across the whole feasible")
