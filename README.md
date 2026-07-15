@@ -179,6 +179,68 @@ analytic dive beats, and its low-thrust Δv is idealized (impulsive-per-step). T
 regimes where the savings vanish (small node angles, budgets so long that passive
 is free) are recorded per build.
 
+## Gravity assists in the real solar system
+
+The circularize and J2 work runs in a two-body field. The next tier flies the
+spacecraft through the *actual* solar system: a JAX rollout under many point-mass
+bodies whose positions come from JPL Horizons, differentiable end to end, so
+`∂(miss distance)/∂(maneuver)` drops out of the same backprop. The engine is
+checked offline before any claim is made — the two-body Kepler limit closes to
+`|Δr|/a = 9e-13`, energy holds to `7e-15`, and from a cold `Δv = 0` start the
+optimizer recovers the analytic Lambert transfer to `1.2e-11` relative. Bodies are
+held fixed within each RK4 step, which is accurate at heliocentric scale but not for
+close geocentric orbits (Earth moves ~9000 km per step), so those use substep
+interpolation.
+
+<p align="center">
+  <img src="docs/media/ephemeris_tour.png" width="480" alt="a 1:2 resonant leg launched from the real Earth, flown under the Sun and real perturbers, returning near Earth"/>
+</p>
+
+**Inclination is free up to a ceiling.** The reachable inclination from gravity
+assists alone is `arcsin(v∞/v_P)` — set by the hyperbolic excess speed `v∞` and the
+planet's orbital speed `v_P`, and independent of the planet's mass. A sequence of
+same-body flybys (the crank) walks inclination up to that ceiling at fixed `v∞`; a
+heavier or closer planet bends the velocity more per pass, so it needs fewer flybys
+(Jupiter one, Venus about five — the diff-sim Venus tour reaches 32.8° against a 32.9°
+ceiling, the same shape as Solar Orbiter's ~7–8 Venus assists to ~33°). The
+mission-design reading is `v∞ ≥ v_P·sin(i)`: a polar orbit needs `v∞` at least the
+planet's orbital speed. Given only a target inclination and a Δv-minimizing objective
+— never told about leverage or cranking, seeded at zero leverage — the backprop
+optimizer *discovers* the textbook plan: crank when the target sits under the ceiling,
+and pump `v∞` first (V∞-leveraging) when it sits above, spending within 1% of the
+analytic budget. Reaching the inclination that way costs 2–12× less Δv than a direct
+plane change.
+
+<p align="center">
+  <img src="docs/media/inclination_ceiling.png" width="900" alt="the arcsin(v-inf / v-P) ceiling with the crank climbing to it, and per-planet flyby counts"/>
+</p>
+
+**The leverage is real, and the real Earth caps it.** A small burn at apoapsis changes
+`v∞` at the next Earth encounter by far more than the burn itself — leverage L ≈ 15–37
+measured against the real ephemeris. But the same leverage that turns a 5 m/s burn into
+~75 m/s of `v∞` also throws the return off the real Earth, and holding the re-encounter
+inside Earth's sphere of influence caps the pump near 0.085 km/s of `v∞` per leg. A
+single-planet staircase creeps from `v∞` 8 to ~9.7 over ~18 legs and then stalls. Four
+rounds pinned down why, each correcting the one before: the pump *does* survive real
+ephemeris per leg (an earlier "it's dead" reading had used a burn ~20× too large); the
+cap is not a quirk of one resonance (every resonance gives the same ~0.1 km/s/leg); it
+is a one-control limit (a single apoapsis burn can't both pump `v∞` and re-aim the
+encounter); and the obvious second control — bending the flyby — turns out to be
+mis-timed, because it sets the outgoing orbit *before* the burn de-phases the return, so
+it can't fix it. The correctly-timed correction (after the burn, or a second planet) is
+the open thread.
+
+<p align="center">
+  <img src="docs/media/leverage_cap.png" width="900" alt="left: a few m/s of apoapsis burn moves v-inf by ~100 m/s; right: pumping harder throws the re-encounter past Earth's SOI, capping the per-leg pump"/>
+</p>
+
+All of this is patched-conic, and it is a study of *mechanism*, not a Δv record: the
+honest headline is that a gravity-assist plane change is cheaper across the board and
+order-of-magnitude cheaper only at favorable leverage, and that an agent differentiating
+through the physics finds the strategy on its own. The full pre-registered method and
+verdicts — including the rounds that overturned earlier conclusions — are in
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
+
 ## Quickstart
 
 ```bash
@@ -202,6 +264,7 @@ uv run --with jax --with matplotlib --with pillow python scripts/viz_readme.py m
 uv run --with jax --with matplotlib --with pillow python scripts/viz_readme_extra.py  # progression / weights / generalization / learning gif
 uv run --with jax --with matplotlib --with pillow python scripts/viz_tier3.py          # CR3BP capture + J2-beat frontier (no checkpoint needed)
 uv run --with jax --with matplotlib --with pillow python scripts/viz_lowthrust.py # low-thrust spiral (flies the E1 lt_2e-4 specialist)
+uv run --with jax --with astroquery --with astropy --with matplotlib python scripts/viz_campaign.py  # N-body ephemeris tour + inclination ceiling + leverage cap (needs .ephem_cache)
 ```
 
 Checkpoints and run logs are not committed (they regenerate by training); the
@@ -217,18 +280,23 @@ small rendered figures only.
 | `scripts/jaxsim.py` | JAX/XLA 3-D diff-sim trainer (the research workhorse) with the full knob set. |
 | `scripts/verify_probe.py` | float64/dt=1 s claim-verification harness (exact + tolerance-box baselines). |
 | `scripts/eval_probe.py`, `norm_probe.py`, `step_probe.py`, … | The measurement toolkit the optimizer forensics ran on. |
+| `ephemeris.py`, `scripts/nbody_sim.py`, `scripts/full_ephemeris_tour.py`, `leverage_anatomy.py`, `resonance_hopping.py`, `flyby_leverage.py` | The differentiable N-body / JPL-ephemeris engine and the gravity-assist study (inclination ceiling, v∞-leverage, the SOI rate cap). Each `--verify` runs offline against the cached ephemeris. |
 | `docs/EXPERIMENTS_3D.md`, `docs/EXPERIMENTS.md` | The optimizer-forensics campaign (3-D) and the 2-D milestone methodology. |
-| `docs/ROADMAP.md`, `docs/AUDIT.md` | Target maneuvers and the audit of the 2021 code. |
+| `docs/ROADMAP.md`, `docs/AUDIT.md` | Target maneuvers, the full gravity-assist campaign log, and the audit of the 2021 code. |
+| `docs/GRAVITY_ASSIST.md` | Reader's digest of the differentiable N-body / gravity-assist arc (the inclination ceiling, leverage, and SOI rate cap). |
 | `v2/`, `archive/` | The 2021 course project, kept as the "before" picture (excluded from CI/typing). |
 
 ## Roadmap
 
-Circularize (3-D, done) → plane change → combined LEO→GEO transfer →
-low-thrust (Edelbaum spiral) → multi-body with real JPL Horizons ephemerides
-(Earth–Moon, Earth–Mars, capture) → benchmark against historically flown
-trajectories. The N-body tier reuses the 2021 project's Horizons stack. For
-any N-body fuel comparison, results must additionally be tested across
-solar-system phases (syzygy effects are real physics but epoch-specific).
+Circularize (3-D, done) → plane change (done) → low-thrust Edelbaum spiral
+(done) → ballistic lunar capture in the CR3BP (done) → the differentiable
+N-body engine on real JPL Horizons ephemerides, and the gravity-assist
+inclination/leverage study on top of it (done, above) → the correctly-timed
+leverage correction and a multi-planet tour (open) → benchmark against
+historically flown trajectories. Any N-body fuel comparison is tested across
+solar-system phases (syzygy effects are real physics but epoch-specific), and
+gravity-assist missions are treated as a test of whether the agent can
+*discover* an assist, not as a Δv target to beat.
 
 ## Provenance
 
