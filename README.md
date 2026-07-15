@@ -181,7 +181,7 @@ is free) are recorded per build.
 
 ## Gravity assists in the real solar system
 
-The circularize and J2 work runs in a two-body field. The next tier flies the
+The circularize and J2 experiments run in a two-body field. The next tier flies the
 spacecraft through the *actual* solar system: a JAX rollout under many point-mass
 bodies whose positions come from JPL Horizons, differentiable end to end, so
 `∂(miss distance)/∂(maneuver)` drops out of the same backprop. The engine is
