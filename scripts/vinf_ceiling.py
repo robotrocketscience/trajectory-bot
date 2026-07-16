@@ -103,7 +103,8 @@ def connectable_vinf(p1, p2, v1_lo, v1_hi, n=600):
                 v2s.append(v2)
     v2s = np.array(v2s)
     usable = v2s[(v2s >= 2) & (v2s <= 20)] if len(v2s) else v2s
-    return len(usable), (v2s.min(), v2s.max()) if len(v2s) else (np.nan, np.nan)
+    rng = (float(usable.min()), float(usable.max())) if len(usable) else (np.nan, np.nan)
+    return len(usable), rng                                  # count and range of the USABLE subset (per docstring)
 
 
 def soft_ceiling(p, vmax=30.0):
