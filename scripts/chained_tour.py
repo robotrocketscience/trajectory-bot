@@ -203,7 +203,10 @@ def verify(args):
         if len(legs) >= 1:
             chains.append((de, legs))
         print(f"    [built chain t0+{de}d: {len(legs)} legs]", flush=True)
-    best = max(chains, key=lambda kl: _summ(kl[1])[1]) if chains else None   # longest v inf gain
+    if not chains:                                           # no epoch produced even a seed leg -> nothing to report
+        print("  no chains built (no viable Earth->Venus seed at any launch epoch in the cached window); aborting.")
+        return
+    best = max(chains, key=lambda kl: _summ(kl[1])[1])        # longest v inf gain
 
     print("  chains by launch epoch (planets visited | #pump legs | v inf start->end | closure Delta-v | net km/s/yr):")
     for de, legs in chains:
