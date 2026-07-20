@@ -751,7 +751,31 @@ RETURNS that bite FIRST at the light planets (δmax-ordered) — the same "free 
 pattern as the SOI cap, now for the flyby-turn budget. **R-N32 = the chained tour / optimizer discovery**, now
 with its graceful degradation understood.
 
-**Build N — out-of-plane arc: crank/resonance half REALIZED and VERIFIED against real ephemeris (R-N15 → R-N20, R-N24a/c, R-N25c); leverage measured (R-N21), composed in the Sun-only rollout (R-N22), robust to circular Jupiter (R-N23) — leverage SURVIVES real ephemeris per-leg (L≈15–37, R-N25a) but is RATE-CAPPED by the real-Earth SOI budget so the pump stalls ~9.7 (R-N25b); the rate cap reclassified as a single-CONTROL limit (not resonance/planet-specific), escapable by a second control — but R-N27 showed the flyby TURN is the WRONG-timed 2nd control (it precedes the DSM's de-phasing, so it only picks the cap-neutral resonance); the correct control acts AFTER the DSM — R-N28 confirmed the post-DSM cleanup TCM re-closes a beyond-cap pump and breaks the SOI RATE cap (pump ~10× the ~85 m/s/leg, up to ~860 m/s) but only at L_eff≈1.1 (a Δv-for-time trade, no cheap escape), so the free leverage is SOI-budget-bounded and MULTI-PLANET is the real fast-and-cheap escape — R-N29 confirmed it (Venus/Earth/Mars each a comparable within-SOI free budget, thousands of ballistic Tisserand handoffs between adjacent planets, inner-planet Venus pumps ~1.7× faster/yr than Earth) but corrected the mechanism from "additive budgets" to "inner planets pump faster + ballistic handoff to reach them"; R-N30 confirmed that ballistic handoff SURVIVES real phasing (Lambert Earth→Venus/Mars hits the real planet exactly with usable v∞ at 40–53% of epochs, free and abundant — phasing is benign because the v∞-pump has no fixed endpoint); R-N31 found the multi-planet free pump has NO hard v∞ ceiling (connectivity persists as v∞ climbs together) but a SOFT, planet-ordered fast-pump ceiling from δmax collapsing (Mars ~v∞14 first, Venus/Earth past 30) — graceful diminishing returns, not a wall; R-N24's "artifact"/mechanism corrected by R-N25, my multi-planet premise by R-N26, R-N26c's flyby-turn claim by R-N27, my "L_eff≤1" lean by R-N28 (peaks ~1.1), my "additive budgets" framing by R-N29, my "phasing eats it" lean by R-N30, my "hard disconnect ceiling" lean by R-N31.** Single-flyby pump (N15) → analytic ceiling + crank
+**Build N R-N32 — does the multi-planet pump COMPOSE into a sustained chain against REAL ephemeris?**
+(`scripts/chained_tour.py`). The capstone INTEGRATION test: R-N25→R-N31 mapped the mechanism analytically, piece
+by piece; R-N32 chains those pieces into a greedy patched-conic MGA against R-N24's cached JPL window (each leg a
+real-ephemeris Lambert hitting the real planet exactly; a ballistic flyby rotates v∞ ≤ δmax, magnitude matched by
+TOF, residual = a small phasing DSM ≤ 0.5 km/s; v∞ capped at 25). One knob: chain length. **H-N32a SUPPORTED
+(PARTIAL) — my "robust ≥3-leg chain" lean CORRECTED:** the chain composes past leg 1 (t0+0: Earth-Venus-Earth-
+Venus, 2 pump legs, v∞ 4.0→9.06 km/s) so the falsifier "stalls at ≤1 leg" is cleared, but it TOPS OUT at 2 pump
+legs (never the ≥3 I predicted) and 4/5 epochs stall after one leg — composition is REAL but SHALLOW under greedy
+(myopic) search. **H-N32b SUPPORTED — my "phasing taxes it below the bound" lean REFUTED:** realized net cadence
+(median ~3985 m/s/yr) EXCEEDS ½ the R-N29 budget (127 m/s/yr) by ~16×, because the MGA HANDOFF pump (big inter-
+planet v∞ jumps, e.g. Earth→Venus +3.8 km/s) is far more powerful than R-N29's single-planet resonance walk — the
+phasing-free bound is CONSERVATIVE (caveat: over short 1-2-leg chains). **H-N32c SUPPORTED (ordering) but
+MECHANISM REFRAMED from δmax to ENERGY — my pre-registered δmax mechanism CORRECTED:** the greedy chains visit
+only {Venus, Earth}; Mars is never visited because reaching it costs a handoff closure Δv (Venus→Mars 9.9,
+Earth→Mars 1.0 km/s) FAR above the 0.5 DSM budget — Mars is ENERGY (Tisserand)-excluded, not δmax-excluded
+(δmax@Mars is still ~23° at v∞ 7); R-N31's δmax ordering is a higher-v∞ SECONDARY limit the greedy chain never
+reaches. (Integrity: THREE builder bugs — max-arrival objective buying v∞ with unbounded Δv incl. a 7×10²² km/s
+diverged Lambert; min-closure pre-selection stalling every chain at 1 leg; a Venus→Mars leg crowding out the real
+Venus→Earth pump — all caught and fixed BEFORE recording, plus a degenerate H-N32c scan replaced.) NET: the
+analytically-mapped pump COMPOSES end-to-end against real ephemeris and pumps FASTER than the bound, but the
+GREEDY chain is shallow (1-2 legs) and Venus-Earth-confined — the gap between analytic reachability and the
+realized shallow chain motivates **R-N33 (north star): a non-greedy / differentiable optimizer that discovers a
+DEEPER pump-handoff tour than greedy myopia allows.**
+
+**Build N — out-of-plane arc: crank/resonance half REALIZED and VERIFIED against real ephemeris (R-N15 → R-N20, R-N24a/c, R-N25c); leverage measured (R-N21), composed in the Sun-only rollout (R-N22), robust to circular Jupiter (R-N23) — leverage SURVIVES real ephemeris per-leg (L≈15–37, R-N25a) but is RATE-CAPPED by the real-Earth SOI budget so the pump stalls ~9.7 (R-N25b); the rate cap reclassified as a single-CONTROL limit (not resonance/planet-specific), escapable by a second control — but R-N27 showed the flyby TURN is the WRONG-timed 2nd control (it precedes the DSM's de-phasing, so it only picks the cap-neutral resonance); the correct control acts AFTER the DSM — R-N28 confirmed the post-DSM cleanup TCM re-closes a beyond-cap pump and breaks the SOI RATE cap (pump ~10× the ~85 m/s/leg, up to ~860 m/s) but only at L_eff≈1.1 (a Δv-for-time trade, no cheap escape), so the free leverage is SOI-budget-bounded and MULTI-PLANET is the real fast-and-cheap escape — R-N29 confirmed it (Venus/Earth/Mars each a comparable within-SOI free budget, thousands of ballistic Tisserand handoffs between adjacent planets, inner-planet Venus pumps ~1.7× faster/yr than Earth) but corrected the mechanism from "additive budgets" to "inner planets pump faster + ballistic handoff to reach them"; R-N30 confirmed that ballistic handoff SURVIVES real phasing (Lambert Earth→Venus/Mars hits the real planet exactly with usable v∞ at 40–53% of epochs, free and abundant — phasing is benign because the v∞-pump has no fixed endpoint); R-N31 found the multi-planet free pump has NO hard v∞ ceiling (connectivity persists as v∞ climbs together) but a SOFT, planet-ordered fast-pump ceiling from δmax collapsing (Mars ~v∞14 first, Venus/Earth past 30) — graceful diminishing returns, not a wall; R-N32 chained the mechanism end-to-end against real ephemeris as a greedy MGA — it COMPOSES (v∞ climbs, Earth-Venus-Earth-Venus 4.0→9.1 km/s) and its cadence EXCEEDS R-N29's bound ~16× (handoff jumps ≫ resonance walk), but the greedy chain is SHALLOW (1-2 pump legs, never ≥3) and Venus-Earth-confined (Mars ENERGY-excluded, not δmax-excluded); R-N24's "artifact"/mechanism corrected by R-N25, my multi-planet premise by R-N26, R-N26c's flyby-turn claim by R-N27, my "L_eff≤1" lean by R-N28 (peaks ~1.1), my "additive budgets" framing by R-N29, my "phasing eats it" lean by R-N30, my "hard disconnect ceiling" lean by R-N31, my "robust ≥3-leg chain" + "phasing taxes below bound" + "δmax-ordered Mars ceiling" leans by R-N32 (shallow, exceeds, energy-excluded).** Single-flyby pump (N15) → analytic ceiling + crank
 (N16) → diff-sim single-node + inc–energy frontier (N17) → real multi-node tour realizing the ceiling in
 ~θ*/δmax nodes + re-encounter cost (N18) → V∞-leveraging breaking the ceiling for a Δv price (N19) → optimizer
 DISCOVERS the whole leverage-then-crank strategy from a naive objective (N20). Reachable inclination =
@@ -768,16 +792,18 @@ the multi-planet escape (comparable per-planet free budgets, ballistic Tisserand
 ~1.7× faster/yr) with a corrected mechanism ("inner planets pump faster + ballistic handoff", not "additive
 budgets"); the crank/free-ceiling half is verified against real ephemeris.
 
-**Build N — next frontiers (open).** **R-N32 (next): the chained multi-planet tour, and/or the OPTIMIZER
-DISCOVERY (north star).** R-N25→R-N31 fully mapped the multi-planet mechanism: rate cap → single-CONTROL limit →
-flyby turn wrong-timed → post-DSM cleanup breaks the RATE cap at L_eff≈1.1 → the cheap fast pump is MULTI-PLANET
-(inner planets pump faster + ballistic Tisserand handoff, R-N29) → the handoff survives real phasing (R-N30) →
-the free pump has no hard v∞ ceiling but a soft, planet-ordered δmax-driven rate degradation (R-N31). The
-mechanism is now understood end to end analytically. The remaining work is INTEGRATION + DISCOVERY: (a) build a
-chained multi-decade pump-handoff-pump tour against real ephemeris that raises v∞ (and inclination) leg over leg,
-and measure the realized cadence vs R-N29's phasing-free bound and R-N31's degradation curve; and (b) — the north
-star — have the DIFFERENTIABLE OPTIMIZER discover the multi-planet pump-handoff strategy from a naive objective,
-one level past R-N20's single-planet leverage-then-crank discovery. Other open frontiers: a single accumulating
+**Build N — next frontiers (open).** **R-N33 (next, the north star): a non-greedy / DIFFERENTIABLE OPTIMIZER that
+discovers a DEEPER multi-planet pump-handoff tour than greedy myopia allows.** R-N25→R-N31 mapped the multi-planet
+mechanism analytically (rate cap → single-CONTROL limit → flyby turn wrong-timed → post-DSM cleanup breaks the
+RATE cap at L_eff≈1.1 → cheap fast pump is MULTI-PLANET, inner planets pump faster + ballistic Tisserand handoff,
+R-N29 → handoff survives real phasing, R-N30 → no hard v∞ ceiling but soft δmax-ordered degradation, R-N31);
+R-N32 then INTEGRATED it end-to-end against real ephemeris as a greedy MGA and found it COMPOSES and pumps faster
+than the bound, BUT the greedy chain is SHALLOW (1-2 legs, never ≥3) and Venus-Earth-confined (Mars energy-
+excluded). So the mechanism is understood AND its greedy realization is quantified — the open work is DISCOVERY:
+(a) — the north star — have the DIFFERENTIABLE OPTIMIZER (or any non-greedy multi-leg planner) discover a deeper
+pump-handoff tour that sustains past the greedy 2-leg wall and, ideally, admits the outer-planet (Mars) handoff
+the greedy chain can't afford; one level past R-N20's single-planet leverage-then-crank discovery; and (b) fold in
+the inclination crank (R-N16/R-N20) so the discovered tour raises inclination as well as v∞. Other open frontiers: a single accumulating
 closed-loop targeted tour
 (R-N23/R-N24 estimated the TCM budget per-leg, not end-to-end); a JOINT backprop-through-everything tour optimizer
 (R-N22 composed leverage + crank as forward phases; R-N24–R-N28 show a real-ephemeris joint objective must include
