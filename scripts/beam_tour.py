@@ -145,7 +145,11 @@ def verify(args):
               f"beam {bs[0]:2d} legs v∞ {bs[2]:5.2f} tax {bs[3]:4.2f} lev {bs[5]:5.1f}")
 
     # deepest / best beam chain, printed leg by leg (the non-greedy structure)
-    bde, _bg, _bgs, bbeam, bbs = max(rows, key=lambda r: r[4][0])       # most beam pump legs
+    beam_rows = [r for r in rows if r[3] is not None]                  # guard: epochs with an actual beam solution
+    if not beam_rows:
+        print("\n  no beam solution at any epoch (no viable Earth->Venus seed in the cached window); aborting.")
+        return
+    bde, _bg, _bgs, bbeam, bbs = max(beam_rows, key=lambda r: r[4][0])  # most beam pump legs
     print(f"\n  deepest beam chain (t0+{bde}d, {bbs[0]} pump legs, v∞ {bbs[1]:.2f}->{bbs[2]:.2f}, tax {bbs[3]:.2f}):")
     vprev = bbeam["legs"][0]["vout_mag"]
     for lg in bbeam["legs"][1:]:
