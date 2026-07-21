@@ -806,7 +806,7 @@ Lambert, one sequence. **R-N35 (the honest path): differentiable discovery via a
 BVP singularity) or a HARD-constrained solver (v∞-matching as equality constraints), not naive gradients.**
 
 **Build N R-N35 — does a FORWARD differentiable model RESCUE the discovery R-N34's Lambert BVP obstructed?**
-(`scripts/forward_tour_discovery.py`). The reformulation R-N34 pointed to: a FORWARD Tisserand model (JAX-
+(`scripts/forward_tour_discovery.py`). The reformulation R-N34 pointed to is a FORWARD Tisserand model (JAX-
 differentiable reimplementation of `tisserand_graph.py`) where v∞ is CONSERVED across each flyby BY CONSTRUCTION
 (closure automatic — no soft constraint to hack) and there is NO boundary-value solve (no singularity). **All 3
 SUPPORTED — my lean HELD.** **H-N35a:** forward gradient ascent DISCOVERS a pump — final v∞ **12.27 km/s** (pumped

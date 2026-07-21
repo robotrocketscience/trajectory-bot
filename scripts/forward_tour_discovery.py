@@ -124,14 +124,13 @@ def gradient_ascent(seq, vinf0, restarts=6, steps=500, lr=0.05):
 def _greedy_from_alpha(seq, vinf0, alpha0):
     a, e = (float(x) for x in orbit_from_flyby(PLAN["earth"][0], vinf0, jnp.array(alpha0)))
     maxe = e
-    for pl in seq[1:]:
+    for idx, pl in enumerate(seq[1:], start=1):            # idx = position in seq (correct for repeated planets)
         r_p, mu, radius = PLAN[pl]
         if not (a * (1 - e) <= r_p <= a * (1 + e)):
             return None                                    # this launch α doesn't reach the planet
         vinf, alpha_in = (float(x) for x in vinf_alpha_at(r_p, a, e))
         dm = float(max_turn(vinf, mu, RP_MIN_FRAC * radius))
-        idx = seq.index(pl)
-        nxt = seq[idx + 1] if idx + 1 < len(seq) else pl
+        nxt = seq[idx + 1] if idx + 1 < len(seq) else pl   # the ACTUAL next planet (not the first same-named one)
         r_n = PLAN[nxt][0]
         best_next, best_ae = -1.0, None
         for d in np.linspace(-dm, dm, 31):
