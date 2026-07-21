@@ -7,6 +7,10 @@
                         orbit out of the ecliptic toward the arcsin(v∞/v_P) ceiling, legs colored by
                         inclination.
 
+  --gif OUT.gif         the same two panels ANIMATED — craft and planets moving, the path revealed
+                        leg by leg with a phase/day readout. NOT committed anywhere: the website
+                        build renders it straight into its deploy directory (no blobs in git).
+
 Unlike `viz_tour.py` (charts of the recorded scalars), this script RE-SOLVES the tour with the merged
 machinery — `beam_constrained_tour.run_search` for the greedy pump chain and `crank_walk`'s dense
 `crank_continuations` for the greedy max-inclination walk, both deterministic — then forward-samples
@@ -14,6 +18,8 @@ every leg with `fgprop.fg_propagate` and draws the actual heliocentric path. The
 checked against the recorded R-N37/R-N38 values before the figure is written.
 
     uv run --with jax --with astroquery --with astropy --with matplotlib python scripts/viz_trajectory.py
+    uv run --with jax --with astroquery --with astropy --with matplotlib --with pillow \
+        python scripts/viz_trajectory.py --gif /path/to/out.gif --cache .rnd/tour_path_cache.npz
 """
 from __future__ import annotations
 
@@ -149,13 +155,9 @@ def draw(legs, encounters, meta):
     import matplotlib.pyplot as plt
     from matplotlib import cm, colors
 
-    # trim to the public nine-flyby tour and give every leg both color values:
-    # panel (a) arrival v∞ (constant REC_FINAL_VINF on the v∞-neutral cranks), panel (b) i_rel vs Venus
-    n_draw = sum(1 for lg in legs if lg["kind"] != "crank") + DRAW_CRANKS
-    legs, encounters = legs[:n_draw], encounters[:n_draw + 1]
-    for lg, enc in zip(legs, encounters):
-        lg["v_col"] = REC_FINAL_VINF if lg["kind"] == "crank" else lg["val"]
-        lg["i_col"] = lg["val"] if lg["kind"] == "crank" else _i_rel_of_leg(lg, enc)
+    # trim to the public nine-flyby tour; panel (a) colors by arrival v∞ (constant REC_FINAL_VINF on
+    # the v∞-neutral cranks), panel (b) by i_rel vs Venus
+    legs, encounters = _trim(legs, encounters)
 
     span = encounters[-1]["jd"] - meta["t0"]
     orbE = planet_orbit("earth", meta["t0"], meta["t0"] + min(span, 370.0)) / C.AU
@@ -211,9 +213,129 @@ def draw(legs, encounters, meta):
     print("wrote pump_crank_path.png")
 
 
+def _trim(legs, encounters):
+    """The public nine-flyby tour, with both per-leg color values (see draw)."""
+    n_draw = sum(1 for lg in legs if lg["kind"] != "crank") + DRAW_CRANKS
+    legs, encounters = legs[:n_draw], encounters[:n_draw + 1]
+    for lg, enc in zip(legs, encounters):
+        lg["v_col"] = REC_FINAL_VINF if lg["kind"] == "crank" else lg["val"]
+        lg["i_col"] = lg["val"] if lg["kind"] == "crank" else _i_rel_of_leg(lg, enc)
+    return legs, encounters
+
+
+def draw_gif(legs, encounters, meta, out, frames=140, fps=18):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib import cm, colors
+    from matplotlib.animation import FuncAnimation, PillowWriter
+
+    legs, encounters = _trim(legs, encounters)
+    t0, t_end = meta["t0"], encounters[-1]["jd"]
+    leg_t = [np.linspace(encounters[i]["jd"], encounters[i + 1]["jd"], N_SAMP) for i in range(len(legs))]
+    orbE = planet_orbit("earth", t0, t0 + 370.0) / C.AU
+    orbV = planet_orbit("venus", t0, t0 + 230.0) / C.AU
+
+    v_norm = colors.Normalize(vmin=5.0, vmax=17.0)
+    i_norm = colors.Normalize(vmin=0.0, vmax=28.0)
+    leg_col = {"a": [cm.plasma(v_norm(lg["v_col"])) for lg in legs],
+               "b": [cm.viridis(i_norm(lg["i_col"])) for lg in legs]}
+
+    ft = np.linspace(t0, t_end, frames)
+    pE = np.array([np.asarray(C.rv_p("earth", j)[0]) for j in ft]) / C.AU
+    pV = np.array([np.asarray(C.rv_p("venus", j)[0]) for j in ft]) / C.AU
+
+    fig, (a, b) = plt.subplots(1, 2, figsize=(9.4, 4.1), width_ratios=[1.0, 1.12], dpi=62)
+    trails, crafts, planets = {}, {}, {}
+    for ax, pk, (i0, i1) in ((a, "a", (0, 1)), (b, "b", (0, 2))):
+        ax.plot(orbE[:, i0], orbE[:, i1], color="#9db4c8", lw=0.8, ls=":", zorder=1)
+        ax.plot(orbV[:, i0], orbV[:, i1], color="#c8a97e", lw=0.8, ls=":", zorder=1)
+        ax.scatter([0], [0], s=45, color="#f2b134", edgecolor=INK, lw=0.5, zorder=4)
+        trails[pk] = [ax.plot([], [], color=leg_col[pk][i], lw=1.4, alpha=0.9, zorder=3)[0]
+                      for i in range(len(legs))]
+        planets[pk] = {"earth": ax.plot([], [], "o", ms=5, color="#4a7ba6", zorder=5)[0],
+                       "venus": ax.plot([], [], "o", ms=4, color="#b8860b", zorder=5)[0]}
+        crafts[pk] = ax.plot([], [], "o", ms=4, color=INK, zorder=6)[0]
+        ax.grid(True, color=GRID, lw=0.5, alpha=0.6)
+        ax.set_axisbelow(True)
+        for s in ("top", "right"):
+            ax.spines[s].set_visible(False)
+        ax.tick_params(labelsize=7)
+    all_xy = np.concatenate([lg["pos"] for lg in legs]) / C.AU
+    a.set_xlim(all_xy[:, 0].min() - 0.1, all_xy[:, 0].max() + 0.1)
+    a.set_ylim(all_xy[:, 1].min() - 0.1, all_xy[:, 1].max() + 0.1)
+    a.set_aspect("equal")
+    b.set_xlim(all_xy[:, 0].min() - 0.1, all_xy[:, 0].max() + 0.1)
+    b.set_ylim(all_xy[:, 2].min() - 0.06, all_xy[:, 2].max() + 0.06)
+    b.axhline(0.0, color=INK, lw=0.6, ls="--", alpha=0.5)
+    a.set_title("top down: the pump", fontsize=9)
+    b.set_title("edge on: the crank", fontsize=9)
+    hud = fig.suptitle("", fontsize=9, y=0.995)
+
+    def phase_of(i):
+        lg = legs[i]
+        if lg["kind"] == "launch":
+            return "launch — v∞ 5.95 km/s"
+        if lg["kind"] == "pump":
+            return f"pumping — v∞ → {lg['v_col']:.1f} km/s (zero Δv)"
+        return f"cranking — inclination → {lg['i_col']:.1f}° (ceiling 27.9°)"
+
+    def update(f):
+        t = ft[f]
+        cur = None
+        for i, lg in enumerate(legs):
+            ts = leg_t[i]
+            if t >= ts[-1]:
+                n = N_SAMP
+            elif t <= ts[0]:
+                n = 0
+            else:
+                n = int(np.searchsorted(ts, t))
+                cur = i
+            p = lg["pos"][:n] / C.AU
+            for pk, i1 in (("a", 1), ("b", 2)):
+                trails[pk][i].set_data(p[:, 0], p[:, i1])
+            if n and cur == i:
+                for pk, i1 in (("a", 1), ("b", 2)):
+                    crafts[pk].set_data([p[-1, 0]], [p[-1, i1]])
+        if cur is None:
+            cur = len(legs) - 1
+        for pk, i1 in (("a", 1), ("b", 2)):
+            planets[pk]["earth"].set_data([pE[f, 0]], [pE[f, i1 if i1 == 1 else 2]])
+            planets[pk]["venus"].set_data([pV[f, 0]], [pV[f, i1 if i1 == 1 else 2]])
+        hud.set_text(f"the flown pump+crank tour — day {t - t0:4.0f}   |   {phase_of(cur)}")
+        return []
+
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    anim = FuncAnimation(fig, update, frames=frames, blit=False)
+    anim.save(out, writer=PillowWriter(fps=fps))
+    plt.close(fig)
+
+    # re-encode with a shared 63-color palette + inter-frame deltas (unchanged pixels -> transparent
+    # index, disposal=keep): only the trail tip, the moving dots, and the readout change per frame,
+    # so this is the difference between a multi-MB file and a few hundred KB
+    from PIL import Image, ImageSequence
+    im = Image.open(out)
+    rgb = [f.convert("RGB") for f in ImageSequence.Iterator(im)]
+    pal = rgb[-1].quantize(colors=63, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    qs = [np.array(f.quantize(palette=pal, dither=Image.Dither.NONE)) for f in rgb]
+    TRANS = 63
+    fr = [Image.fromarray(qs[0], mode="P")]
+    for prev, cur in zip(qs, qs[1:]):
+        d = cur.copy()
+        d[cur == prev] = TRANS
+        fr.append(Image.fromarray(d, mode="P"))
+    for f in fr:
+        f.putpalette(pal.getpalette())
+    fr[0].save(out, save_all=True, append_images=fr[1:], duration=int(1000 / fps), loop=0,
+               transparency=TRANS, disposal=1, optimize=False)
+    print(f"wrote {out} ({Path(out).stat().st_size / 1e6:.2f} MB, {len(fr)} frames)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", default=None, help="npz path: reuse the sampled path if present, write it after solving")
+    ap.add_argument("--gif", default=None, help="render the animated tour to this path instead of the static PNG")
     args = ap.parse_args()
 
     if not C.F._require_cache():
@@ -231,7 +353,10 @@ def main():
             np.savez(args.cache, legs=np.array(legs, dtype=object),
                      encounters=np.array(encounters, dtype=object), meta=np.array(meta, dtype=object))
             print(f"cached path to {args.cache}")
-    draw(legs, encounters, meta)
+    if args.gif:
+        draw_gif(legs, encounters, meta, args.gif)
+    else:
+        draw(legs, encounters, meta)
 
 
 if __name__ == "__main__":
