@@ -134,14 +134,15 @@ def expand(beam):
 
 
 def run_search(t0, width):
-    """Beam search (width=1 -> greedy) from the R-N36 launch. Returns (best-final node, per-depth log)."""
+    """Beam search (width=1 -> greedy) from the R-N36 launch. Returns (best node, per-depth log, root) — all
+    None/empty if no launch leg closes (callers must guard)."""
     b = None
     for lt in (120.0, 160.0, 200.0, 240.0):
         r = C.close_launch(t0, lt, "venus")
         if r is not None and (b is None or r[2] < b[2]):
             b = (*r, lt)
     if b is None:
-        return None, []
+        return None, [], None
     u_l, miss_l, seed_v, vinf_vec, lt = b
     root = {"at": "venus", "jd": t0 + lt, "vin": vinf_vec, "legs": [], "mag": float(jnp.linalg.norm(vinf_vec)),
             "seed_v": seed_v, "launch_tof": lt, "launch_miss": miss_l}
@@ -179,6 +180,9 @@ def verify(args):
 
     print("  [beam search]", flush=True)
     best_b, log_b, root = run_search(t0, BEAM_W)
+    if root is None:
+        print("  no launch leg closed at any tof — H-N37a REFUTED at the first hurdle; aborting.")
+        return
     print(f"  launch: seed v inf {root['seed_v']:.2f} km/s, tof {root['launch_tof']:.0f} d, "
           f"miss {root['launch_miss']:.1e} km")
     for depth, nch, top in log_b:
