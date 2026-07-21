@@ -227,11 +227,42 @@ cap is not a quirk of one resonance (every resonance gives the same ~0.1 km/s/le
 is a one-control limit (a single apoapsis burn can't both pump `v∞` and re-aim the
 encounter); and the obvious second control — bending the flyby — turns out to be
 mis-timed, because it sets the outgoing orbit *before* the burn de-phases the return, so
-it can't fix it. The correctly-timed correction (after the burn, or a second planet) is
-the open thread.
+it can't fix it. The correctly-timed correction acts after the burn, and it does break
+the cap — but only by trading Δv one-for-one, no longer leveraged. The cheap escape is a
+second planet: inner planets pump faster (shorter years, more encounters), and the
+handoff between planets rides a conserved quantity (the Tisserand parameter), so it
+costs nothing.
 
 <p align="center">
   <img src="docs/media/leverage_cap.png" width="900" alt="left: a few m/s of apoapsis burn moves v-inf by ~100 m/s; right: pumping harder throws the re-encounter past Earth's SOI, capping the per-leg pump"/>
+</p>
+
+**Making discovery work on the real ephemeris took a reformulation.** The obvious
+differentiable setup — solve each leg as a boundary-value problem (Lambert) and penalize
+flyby mismatch — fails in an instructive way: the resonant-return legs a deep tour needs
+sit at near-singularities of the boundary-value problem, gradients there spike past
+`1e18`, and the optimizer climbs into them, reporting huge `v∞` while quietly violating
+the flyby physics. The fix is structural, not a tuning knob: propagate each leg
+*forward* with a differentiable Kepler propagator (no boundary-value solve anywhere),
+make the flyby a bounded rotation of `v∞` (so `|v∞|` is conserved exactly — there is no
+constraint left to cheat), and close each encounter with the real moving planet by
+Gauss-Newton inside the differentiable loop. Encounters then close to meters against
+the real ephemeris, and gradients flow end to end.
+
+**The tour that architecture finds.** From a 5.95 km/s launch, tree search over the
+closed continuations reaches `v∞ = 16.3 km/s` in four pumping flybys of Venus and Earth
+— every encounter hit ballistically, with no deterministic maneuvers at all — and then,
+once the pump saturates, five more Venus flybys crank the inclination from 1° to 27.1°,
+which is 97% of the `arcsin(v∞/v_P)` ceiling. The crank pays a tax the idealized theory
+misses: each flyby must also re-hit the real moving planet, which pins about half of
+every turn, so the walk takes ~5 encounters instead of the ideal ~2 — slower, but the
+ceiling is still reached. And it is not a lucky date: across eight launch epochs
+spanning two synodic cycles, five pump to 15–18 km/s (median 15.3), two have no viable
+cheap launch at all, and one launches fine but never climbs — the failure modes are
+part of the result.
+
+<p align="center">
+  <img src="docs/media/pump_crank_tour.png" width="900" alt="left: the discovered pump chain, v-inf 5.95 to 16.27 over six flybys; middle: the inclination crank walking to 97 percent of the analytic ceiling; right: final v-inf across eight launch epochs"/>
 </p>
 
 All of this is patched-conic, and it is a study of *mechanism*, not a Δv record: the

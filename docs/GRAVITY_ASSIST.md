@@ -76,10 +76,49 @@ Four rounds established why, each correcting the one before it:
 | R-N25 | The leverage is not dead. R-N24 had used a burn ~20× too large; at the right few-m/s scale the pump survives per leg (L ≈ 15–37) but is rate-capped by the SOI budget (~0.085 km/s/leg), so it stalls near 9.7. |
 | R-N26 | The cap is not a quirk of one resonance. Every feasible resonance gives the same ~0.1 km/s/leg. It is a one-control limit: a single apoapsis burn cannot both pump `v∞` and re-aim the encounter. |
 | R-N27 | The obvious second control — bending the flyby — is mis-timed. It sets the outgoing orbit *before* the burn de-phases the return, so it cannot correct that de-phasing. It spans ~7 resonances (it is a strong control) but leaves the per-leg cap unchanged. |
+| R-N28 | The correctly-timed correction — a cleanup maneuver *after* the burn — does break the cap (pump ~10× the per-leg limit), but only at effective leverage ≈ 1: a Δv-for-time trade, no longer amplified. The free pump stays SOI-bounded. |
+| R-N29–R-N31 | The cheap escape is multi-planet. Inner planets pump faster (shorter years, more encounters); the handoff between planets rides the conserved Tisserand parameter, so it costs nothing, and it survives real phasing at 40–53% of epochs. There is no hard `v∞` ceiling — only a soft one from the flyby turn `δmax` collapsing, which bites lightest planets first. |
+| R-N32–R-N33 | Chained against the real ephemeris, the pump composes — but a greedy chain stalls at 1–2 flybys. A beam search breaks the wall (6 flybys) by taking legs that *lose* `v∞` locally to unlock a larger pump later. |
 
-The correctly-timed correction acts *after* the burn — a cleanup maneuver, or a second
-planet's flyby. Whether that breaks the cap cheaply is the open thread (an earlier
-closed-loop correction cost ~3.6 km/s, so it is not obviously cheap).
+## Making discovery differentiable took a reformulation
+
+The obvious differentiable setup — solve each leg as a boundary-value problem (Lambert)
+and penalize any flyby mismatch — fails in an instructive way. The resonant-return legs
+a deep tour needs sit at near-singularities of the boundary-value problem: `v∞` there
+blows up to 50–60 km/s and its gradient spikes past `1e18`. An optimizer chasing `v∞`
+climbs straight into those singularities and reports huge speeds while quietly violating
+the flyby-matching constraint. Clipping, penalty schedules, and reward caps do not save
+it — the failure is in the formulation.
+
+The fix is structural. Propagate each leg *forward* with a differentiable Kepler
+propagator, so there is no boundary-value solve anywhere. Make the flyby a bounded
+rotation of `v∞`, so `|v∞|` is conserved exactly by construction — the constraint the
+optimizer used to cheat no longer exists as a constraint. And close each encounter with
+the real moving planet by damped Gauss-Newton *inside* the differentiable loop.
+Encounters then close to meters against the real ephemeris and gradients flow end to
+end through the closed solutions.
+
+## The tour that architecture finds
+
+From a 5.95 km/s launch, tree search over the ballistically-closed continuations reaches
+`v∞ = 16.3 km/s` in four pumping flybys of Venus and Earth (one Earth→Venus handoff is
+worth +5.0 km/s by itself), with every encounter hit to sub-kilometer miss and zero
+deterministic maneuvers. Once the pump saturates — the flyby turn `δmax` has shrunk to
+19° at that speed — five more Venus flybys crank the inclination from 1° to 27.1°,
+97% of the `arcsin(v∞/v_P)` ceiling.
+
+The crank pays a tax the idealized theory misses. In the clean model, every degree of
+flyby turn is available for the plane change. Against the real ephemeris each flyby
+must *also* re-hit the moving planet, and that re-targeting pins about half of every
+turn — so the walk to the ceiling takes ~5 encounters instead of the ideal ~2. Slower,
+but the ceiling is still reached, exactly ballistically.
+
+And it is not a lucky date. Across eight launch epochs spanning two synodic cycles,
+five pump to 15–18 km/s (median 15.3), two have no viable cheap launch at all (the
+phasing scarcity measured earlier: only ~half of epochs offer a usable handoff), and
+one launches fine but never climbs. The failure modes are part of the result.
+
+![left: the pump chain to 16.27 km/s; middle: the crank to 97% of the ceiling; right: the epoch sweep](media/pump_crank_tour.png)
 
 ## Honest scope
 
