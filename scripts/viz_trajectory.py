@@ -223,7 +223,7 @@ def _trim(legs, encounters):
     return legs, encounters
 
 
-def draw_gif(legs, encounters, meta, out, frames=140, fps=18):
+def draw_gif(legs, encounters, meta, out, frames=700, fps=9):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -303,7 +303,8 @@ def draw_gif(legs, encounters, meta, out, frames=140, fps=18):
         for pk, i1 in (("a", 1), ("b", 2)):
             planets[pk]["earth"].set_data([pE[f, 0]], [pE[f, i1 if i1 == 1 else 2]])
             planets[pk]["venus"].set_data([pV[f, 0]], [pV[f, i1 if i1 == 1 else 2]])
-        hud.set_text(f"the flown pump+crank tour — day {t - t0:4.0f}   |   {phase_of(cur)}")
+        day = 25 * round((t - t0) / 25)              # coarse readout: fewer text redraws = smaller GIF deltas
+        hud.set_text(f"the flown pump+crank tour — day {day:4d}   |   {phase_of(cur)}")
         return []
 
     fig.tight_layout(rect=(0, 0, 1, 0.96))
