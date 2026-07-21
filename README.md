@@ -25,11 +25,15 @@ flowchart LR
     L -.->|"∂loss/∂θ through the whole rollout"| P
 ```
 
-The whole policy is a tiny **13 → 128 → 128 → 4** tanh MLP — three weight
-matrices, trained end-to-end through the physics:
+The whole policy is a tiny **13 → 128 → 128 → 4** tanh MLP, trained end-to-end
+through the physics. Its weights are three unremarkable matrices; what matters is
+the *control law* they encode. Reading the trained policy back out — sampling its
+commanded thrust around an orbit, and measuring which inputs move the throttle —
+shows it rediscovered the textbook maneuver on its own: **coast, then burn
+prograde at apoapsis, keyed almost entirely on the radius error** — never told to.
 
 <p align="center">
-  <img src="docs/media/weights.png" width="820" alt="the three trained policy weight matrices"/>
+  <img src="docs/media/control_law.png" width="880" alt="left: the policy's commanded thrust around an eccentric orbit — coasting most of the way, then a prograde burn at apoapsis; right: input attribution bars showing the throttle keys mostly on radius error"/>
 </p>
 
 ## Verified results
