@@ -155,7 +155,10 @@ def verdicts(rows):
     vf = np.array([r["vfinal"] for r in rows])
     a_frac = float(np.mean([(r["vfinal"] >= 12.0 and r["depth"] >= 3) for r in rows]))
     med = float(np.median(vf))
-    c_frac = float(np.mean([(r["n_raise"] >= 1) for r in rows]))
+    # H-N39c denominator = epochs WITH a saturated node (the crank enumeration ran: viable, depth >= 1) —
+    # per the pre-registration's "epochs' saturated nodes" (CodeRabbit caught the all-epochs denominator).
+    sat_rows = [r for r in rows if r.get("viable", True) and r["depth"] >= 1]
+    c_frac = float(np.mean([(r["n_raise"] >= 1) for r in sat_rows])) if sat_rows else 0.0
     a_ok, b_ok, c_ok = a_frac >= 0.5, med >= 10.0, c_frac >= 0.5
     print(f"\n  distribution over {len(rows)} epochs: final v inf min/median/max = "
           f"{vf.min():.2f}/{med:.2f}/{vf.max():.2f} km/s; depth min/median/max = "
@@ -167,7 +170,8 @@ def verdicts(rows):
     print(f"  → H-N39b {'SUPPORTED' if b_ok else 'REFUTED'}: median final v inf {med:.2f} "
           f"{'≥' if b_ok else '<'} 10 km/s — the typical epoch pumps "
           f"{'at least to the R-N36 level' if b_ok else 'well below the demonstrated tours'}.")
-    print(f"  → H-N39c {'SUPPORTED' if c_ok else 'REFUTED'}: {100 * c_frac:.0f}% of saturated nodes have ≥ 1 "
+    print(f"  → H-N39c {'SUPPORTED' if c_ok else 'REFUTED'}: {100 * c_frac:.0f}% of saturated nodes "
+          f"({sum(r['n_raise'] >= 1 for r in sat_rows)}/{len(sat_rows)} epochs that reached one) have ≥ 1 "
           f"closed inclination-raising return ({'≥' if c_ok else '<'} 50%) — crank availability is "
           f"{'GENERIC' if c_ok else 'epoch-dependent'}.")
     print(f"\n  → verdicts: H-N39a {'SUPPORTED' if a_ok else 'REFUTED'}, H-N39b {'SUPPORTED' if b_ok else 'REFUTED'}, "
