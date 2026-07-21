@@ -262,6 +262,10 @@ cheap launch at all, and one launches fine but never climbs — the failure mode
 part of the result.
 
 <p align="center">
+  <img src="docs/media/pump_crank_path.png" width="900" alt="the flown tour: top-down heliocentric view of the pump spiral with legs colored by v-inf, and edge-on view of the crank tilting the orbit out of the ecliptic to 27 degrees"/>
+</p>
+
+<p align="center">
   <img src="docs/media/pump_crank_tour.png" width="900" alt="left: the discovered pump chain, v-inf 5.95 to 16.27 over six flybys; middle: the inclination crank walking to 97 percent of the analytic ceiling; right: final v-inf across eight launch epochs"/>
 </p>
 

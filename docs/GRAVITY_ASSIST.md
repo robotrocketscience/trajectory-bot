@@ -113,6 +113,8 @@ must *also* re-hit the moving planet, and that re-targeting pins about half of e
 turn — so the walk to the ceiling takes ~5 encounters instead of the ideal ~2. Slower,
 but the ceiling is still reached, exactly ballistically.
 
+![the flown path: top-down, the pump spiral colored by v-inf; edge-on, the crank tilting the orbit out of the ecliptic](media/pump_crank_path.png)
+
 And it is not a lucky date. Across eight launch epochs spanning two synodic cycles,
 five pump to 15–18 km/s (median 15.3), two have no viable cheap launch at all (the
 phasing scarcity measured earlier: only ~half of epochs offer a usable handoff), and
