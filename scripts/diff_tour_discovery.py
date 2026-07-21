@@ -156,13 +156,11 @@ def verify(args):
     # ---- (3) MECHANISM: the resonant-return legs the deep tour needs are Lambert BVP near-singularities ----
     ev = _tab("venus")
     tvv, rvv, vvv = ev
-    def vinf_vv(tof):
+    def vinf_vv(tof):                                       # venus->venus arrival v∞ (only the arrival is needed)
         r1 = jnp.stack([jnp.interp(t0, tvv, rvv[:, k]) for k in range(3)])
-        vp1 = jnp.stack([jnp.interp(t0, tvv, vvv[:, k]) for k in range(3)])
         r2 = jnp.stack([jnp.interp(t0 + tof, tvv, rvv[:, k]) for k in range(3)])
         vp2 = jnp.stack([jnp.interp(t0 + tof, tvv, vvv[:, k]) for k in range(3)])
         _, v2 = lambert(r1, r2, tof * DAY, mu=MU_S)
-        _ = vp1
         return jnp.linalg.norm(v2 - vp2)
     gvv = jax.grad(vinf_vv)
     print("\n  (3) MECHANISM — a venus→venus resonant-return leg (Venus period ~224.7 d) vs TOF (the deep tour")
