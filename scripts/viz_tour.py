@@ -83,11 +83,12 @@ def main():
     b.set_ylim(0, 31)
     _grid(b)
 
-    # (c) the epoch sweep
+    # (c) the epoch sweep — placeholder bars for no-launch epochs span the data range (no magic height)
     xc = np.arange(len(EPOCH_OFF))
+    v_top = 1.05 * max(v for v in EPOCH_VF if v is not None)
     for i, (off, vf) in enumerate(zip(EPOCH_OFF, EPOCH_VF)):
         if vf is None:
-            c.bar(i, 18.5, color="none", edgecolor=FAIL, hatch="//", lw=1.0)
+            c.bar(i, v_top, color="none", edgecolor=FAIL, hatch="//", lw=1.0)
             c.text(i, 0.7, "no\nlaunch", ha="center", fontsize=7.5, color=INK)
         else:
             c.bar(i, vf, color=EPOCH if vf >= 10 else FAIL)
