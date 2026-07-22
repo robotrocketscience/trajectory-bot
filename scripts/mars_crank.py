@@ -61,7 +61,7 @@ import mars_arrival as MA                 # noqa: E402  (R-N45 arrival_state)
 import crank_walk as CW                   # noqa: E402  (R-N38 crank machinery — reused verbatim)
 
 # Retune R-N38's crank tof grid to Mars's ~687-d period (crank_continuations reads this module global), and
-# DENSIFY it: R-N47 found the standard 7x16x28 / 24-GN grid UNDERCOUNTS resonant Mars returns at some
+# DENSIFY it: R-N47 found the standard 7x16x24 / 24-GN grid UNDERCOUNTS resonant Mars returns at some
 # magnitudes (0 closed where a wide search finds 100+), and R-N48 confirmed the dense 13x32x60 / 200-GN grid
 # is the right instrument (R-N46's real-arrival numbers hold under it). Adopted as the default here to retire
 # the sparse-grid debt. (Original R-N46 verdicts used the sparse grid; they are UNCHANGED under the dense grid
@@ -266,8 +266,8 @@ def report_verdicts(res, diag=None):
         print(f"    arrival (δmax 6.2° ≪ ceiling 34.8°) chains {h['n']} small re-closing steps to {h['i_max']:.1f}° = "
               f"{100 * h['frac']:.0f}% of ceiling.")
     print("    Mechanism: a SUSTAINED Mars crank needs MANY SMALL re-closing steps, not one big rotation, and at")
-    print("    these two real arrivals the hot t0+600 arrival realizes far more crank than t0+200. Mars IS a")
-    print("    genuine crank node for HOT arrivals. H-N46c holds: exactly ballistic, |v∞| conserved to <0.1%.")
+    print("    these two real arrivals the hot t0+600 arrival realizes far more crank than t0+200. Mars is a")
+    print("    genuine crank node at the tested t0+600 arrival. H-N46c holds: exactly ballistic, |v∞| < 0.1% drift.")
     print("    NOTE (R-N47/R-N48): the fraction-vs-|v∞| relationship is GEOMETRY-DEPENDENT (at fixed geometry the")
     print("    fraction DECREASES with |v∞|), NOT a clean δmax inversion — the earlier 'wins twice / inverted in")
     print("    δmax' reading was refuted; these numbers use the dense grid R-N48 verified (t0+200 ~33%, t0+600 ~72%).")

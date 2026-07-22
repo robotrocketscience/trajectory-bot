@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Does R-N46's Mars-crank result SURVIVE the dense crank grid at the REAL arrivals? (Build N, R-N48).
 
-R-N47 proved the standard crank grid (7x16x28 seeds, 24 GN starts) undercounts resonant Mars returns at some
+R-N47 proved the standard crank grid (7x16x24 seeds, 24 GN starts) undercounts resonant Mars returns at some
 scaled |v_inf|. R-N46's verdicts (t0+200 v_inf 7.85 -> raise-run 1 / 34% of ceiling, a STALL; t0+600 v_inf
 14.47 -> raise-run 8 / 68%, a CHAIN) used that grid, and R-N46's "stall is physical" rested on a wide/dense
 post-crank-1 diagnostic checking only ONE node. This round re-runs R-N46's crank walk at the REAL R-N45

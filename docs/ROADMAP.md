@@ -1051,7 +1051,7 @@ own n=2 conclusion). Hold the Mars arrival geometry FIXED (one R-N45 arrival's e
 |v∞|, cranking at each — at two geometries (t0+600, t0+200). ONE knob = |v∞| at fixed geometry. **ALL 3 REFUTED;
 my going-in lean comprehensively wrong; and a SURFACING-GRID artifact caught and fixed mid-round.** The first
 (standard-grid) sweep looked clean (a stall→chain raise-run threshold, spurious t0+200 zeros), but a **physical-
-vs-artifact zero-diagnostic** found the standard grid (7×16×28/24-GN) reports 0 closed returns where a wide
+vs-artifact zero-diagnostic** found the standard grid (7×16×24/24-GN) reports 0 closed returns where a wide
 search closes **104–176** — it undercounts at those magnitudes [R-N48 refines: MAGNITUDE-SPECIFIC — adequate at
 the real arrivals]. Re-running with a dense grid (13×32×60/200-GN)
 **overturned the sparse answer entirely.** Dense result: at FIXED t0+600 geometry the realized fraction
@@ -1086,13 +1086,14 @@ debt); lift the ≤8-crank cap; a Mars-capture budget round; the R-N42 crank-bra
 
 **Build N R-N49 — adopt the dense crank grid as the default in mars_crank.py (maintenance / reconciliation).**
 (`scripts/mars_crank.py`; user-selected direction — "adopt the dense grid, retire the debt"). Not a discovery
-round: changes mars_crank.py's Mars crank grid from the sparse 7×16×28 / 24-GN to the dense 13×32×60 / 200-GN
+round: changes mars_crank.py's Mars crank grid from the sparse 7×16×24 / 24-GN to the dense 13×32×60 / 200-GN
 that R-N47 found necessary and R-N48 verified, so future crank rounds don't inherit the under-surfacing footgun,
 and reconciles mars_crank.py's docstring + NET prose with the R-N47/R-N48 corrections (dropped the refuted
 "fraction inverted in δmax / high-v∞ wins twice" reading — the fraction law is geometry-dependent). **H-N49
 confirmatory SUPPORTED:** `mars_crank.py --verify` end-to-end with the dense grid gives t0+200 run 1 / 33%
-(diagnose_stall PHYSICAL), t0+600 run 7 / 72%, verdicts **MIXED / MIXED / SUPPORTED — identical to R-N46** (only
-the numbers shift: 34→33%, 68→72%). The Mars-crank thread (R-N45→R-N49) is now settled and the instrument debt
+(diagnose_stall PHYSICAL), t0+600 run 7 / 72%, verdicts **identical to R-N46** — per-epoch labels
+MIXED / MIXED / SUPPORTED, primary-t0+200 summary REFUTED / REFUTED / SUPPORTED (only the numbers shift:
+34→33%, 68→72%). The Mars-crank thread (R-N45→R-N49) is now settled and the instrument debt
 retired. **R-N50 candidates: lift the ≤8-crank cap; a Mars-capture budget round; the R-N42 crank-branch search;
 or pivot the campaign off the Mars-crank thread.**
 
