@@ -168,16 +168,19 @@ def report_verdicts(res):
     lab_a = "MIXED" if (hi_a and not prim_a) else ("SUPPORTED" if prim_a else "REFUTED")
     lab_b = "MIXED" if (hi_b and not prim_b) else ("SUPPORTED" if prim_b else "REFUTED")
     prim_stall = f"{p['best_run']} (≥3)" if prim_a else f"{p['best_run']} (<3, PHYSICAL stall)"
+    # high-v_inf epoch: only attach a </≥50% marker when the epoch actually exists (else "n/a", no false check)
     hi_txt = f"t0+600 {h['i_max']:.1f}° = {100 * h['frac']:.0f}% (run {h['best_run']})" if h else "t0+600 n/a"
+    hi_mark = f" ({'≥' if hi_b else '<'}50%)" if h else ""
     max_drift = 100 * max(p["vdrift"], h["vdrift"] if h else 0.0)
+    drift_op = "≤" if max_drift <= 2.0 else ">"     # derive the operator from the measured drift, not the verdict
     print(f"  → H-N46a {lab_a}: the crank mechanism {'TRANSFERS to Mars but NOT at the pre-registered primary' if lab_a == 'MIXED' else ('transfers' if prim_a else 'does not transfer')} "
           f"— primary t0+200 longest raise-run {prim_stall}; {hi_txt}.")
     print(f"  → H-N46b {lab_b}: ceiling approachability is EPOCH-INVERTED — primary t0+200 {p['i_max']:.1f}° = "
-          f"{100 * p['frac']:.0f}% ({'≥' if prim_b else '<'}50%), {hi_txt} ({'≥' if hi_b else '<'}50%). "
+          f"{100 * p['frac']:.0f}% ({'≥' if prim_b else '<'}50%), {hi_txt}{hi_mark}. "
           f"The LOW-v∞ arrival I predicted would crank best stalls; the HIGH-v∞ arrival chains past 50%.")
     print(f"  → H-N46c {'SUPPORTED' if c_ok else 'REFUTED'}: the Mars crank is "
           f"{'FREE and non-destructive at BOTH epochs' if c_ok else 'NOT free'} — every leg ballistically "
-          f"re-closed (sub-SOI), |v∞| drift ≤ {max_drift:.2f}% ≤ 2%.")
+          f"re-closed (sub-SOI), |v∞| drift {max_drift:.2f}% {drift_op} 2%.")
 
     print(f"\n  → verdicts (pre-registered PRIMARY t0+200): H-N46a {'SUPPORTED' if prim_a else 'REFUTED'}, "
           f"H-N46b {'SUPPORTED' if prim_b else 'REFUTED'}, H-N46c {'SUPPORTED' if c_ok else 'REFUTED'} "
