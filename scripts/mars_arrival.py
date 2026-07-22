@@ -81,7 +81,10 @@ def arrival_state(dep, dfly, phi, tof, frac, vinn, jdn):
             J = jacfwd(resid)(dsm)
             return dsm - jnp.linalg.solve(J.T @ J + 1e-9 * jnp.eye(3), J.T @ r), None
         dsm, _ = lax.scan(body, jnp.zeros(3), None, length=30)
-        return dsm, leg(dsm)
+        st2 = leg(dsm)
+        rM, _ = C.rv_p("mars", jdn + tof)
+        miss = jnp.linalg.norm(st2[0:3] - rM)      # terminal Mars miss (km) — must be sub-SOI to trust st2
+        return dsm, st2, miss
     return solve()
 
 
@@ -92,7 +95,13 @@ def characterize(jdn, vinn):
     if md is None:
         return None
     dfly, phi, tof, frac = float(g[0]), float(g[1]), float(g[2]), float(g[3])
-    _dsm, st2 = arrival_state("earth", dfly, phi, tof, frac, vinn, jnp.float64(jdn))
+    _dsm, st2, arr_miss = arrival_state("earth", dfly, phi, tof, frac, vinn, jnp.float64(jdn))
+    # the arrival diagnostics are only meaningful if st2 is actually AT Mars — assert the re-solved leg closed
+    # (min_dsm already found this grid row sub-SOI; arrival_state re-solves it deterministically, so this is a
+    # guard against a silent divergence, not an expected failure). Refuse to publish v_inf off a non-arrival.
+    if float(arr_miss) >= C.SOI_KM["mars"]:
+        raise AssertionError(f"arrival_state did not close at Mars: miss {float(arr_miss):.3e} km "
+                             f">= SOI {C.SOI_KM['mars']:.3e} km (grid-min reported {mbest:.3e})")
     _rM, vM = C.rv_p("mars", jdn + tof)
     vM = np.asarray(vM)
     v_sc = np.asarray(st2[3:6])
@@ -103,7 +112,7 @@ def characterize(jdn, vinn):
     v_esc = float(np.sqrt(2 * MU_M / RP_M))                 # parabolic speed at r_p
     v_hyp = float(np.sqrt(vinf_M ** 2 + 2 * MU_M / RP_M))   # hyperbolic periapsis speed
     dv_capture = v_hyp - v_esc                              # parabolic-limit (minimum) capture dv
-    return {"vinf_node": float(jnp.linalg.norm(vinn)), "dsm": md, "miss": mbest, "tof": tof,
+    return {"vinf_node": float(jnp.linalg.norm(vinn)), "dsm": md, "miss": float(arr_miss), "tof": tof,
             "vinf_M": vinf_M, "v_mars": v_mars, "r_arr": r_arr, "ceil": ceil_deg, "dv_cap": dv_capture}
 
 
@@ -134,37 +143,47 @@ def verify(args):
               f"ARRIVAL v_inf {r['vinf_M']:.2f} km/s | crank ceiling {r['ceil']:.1f} deg | "
               f"min capture dv {r['dv_cap']:.2f} km/s", flush=True)
 
+    # Require EVERY configured epoch to close before emitting a "both epochs" verdict — a favorable extremum
+    # from one epoch must not carry the claim while the other failed or was skipped (CodeRabbit). Judge each
+    # hypothesis on its WORST-supporting epoch (min v_inf, min ceiling, min capture dv) so the verdict is the
+    # conservative both-epochs claim, not a best-case one.
+    both_present = len(rows) == len(EPOCH_OFFSETS)
+    if not both_present:
+        print(f"\n  ⚠ only {len(rows)}/{len(EPOCH_OFFSETS)} configured epochs closed — cannot assert a both-epochs")
+        print("    verdict; treating the missing epoch as a failure of the all-epochs contract.")
     if not rows:
-        print("\n  no closed handoff at any epoch — aborting.")
+        print("  no closed handoff at any epoch — aborting.")
         return
 
-    # judge each hypothesis against its pre-registered falsifier, on the BEST-supporting closed epoch
-    vinf_best = max(r["vinf_M"] for r in rows)
-    ceil_best = max(r["ceil"] for r in rows)
-    dv_min = min(r["dv_cap"] for r in rows)      # the CHEAPEST capture across epochs (hardest case for H-N45c)
-    a_ok = vinf_best >= HOT_BAR
-    b_ok = ceil_best >= CRANK_BAR
-    c_ok = dv_min > CAPTURE_BUDGET
+    vinf_worst = min(r["vinf_M"] for r in rows)   # coldest arrival across epochs (hardest case for H-N45a)
+    ceil_worst = min(r["ceil"] for r in rows)      # weakest crank across epochs (hardest case for H-N45b)
+    dv_worst = min(r["dv_cap"] for r in rows)      # cheapest capture across epochs (hardest case for H-N45c)
+    a_ok = both_present and all(r["vinf_M"] >= HOT_BAR for r in rows)
+    b_ok = both_present and all(r["ceil"] >= CRANK_BAR for r in rows)
+    c_ok = both_present and all(r["dv_cap"] > CAPTURE_BUDGET for r in rows)
 
-    print(f"\n  → H-N45a {'SUPPORTED' if a_ok else 'REFUTED'}: the handoff arrives HOT — max arrival v_inf "
-          f"{vinf_best:.2f} km/s {'≥' if a_ok else '<'} {HOT_BAR:.1f} (vs Hohmann {HOHMANN_VINF}); the pumped "
-          f"orbit is highly energetic at Mars's radius.")
-    print(f"  → H-N45b {'SUPPORTED' if b_ok else 'REFUTED'}: Mars is a CRANK node — max crank ceiling "
-          f"arcsin(v_inf/v_Mars) {ceil_best:.1f}° {'≥' if b_ok else '<'} {CRANK_BAR:.0f}° (a real per-node "
-          f"crank, like Venus/Earth in R-N38).")
-    print(f"  → H-N45c {'SUPPORTED' if c_ok else 'REFUTED'}: it is a fast FLYBY not a capture — cheapest "
-          f"capture dv {dv_min:.2f} km/s {'>' if c_ok else '≤'} the {CAPTURE_BUDGET:.1f} km/s DSM budget "
-          f"(hot-arrival, not near-capture).")
+    print(f"\n  → H-N45a {'SUPPORTED' if a_ok else 'REFUTED'}: the handoff arrives HOT at EVERY epoch — coldest "
+          f"arrival v_inf {vinf_worst:.2f} km/s {'≥' if a_ok else '<'} {HOT_BAR:.1f} (vs Hohmann {HOHMANN_VINF}); "
+          f"the pumped orbit is highly energetic at Mars's radius.")
+    print(f"  → H-N45b {'SUPPORTED' if b_ok else 'REFUTED'}: Mars is a CRANK node at EVERY epoch — weakest crank "
+          f"ceiling arcsin(v_inf/v_Mars) {ceil_worst:.1f}° {'≥' if b_ok else '<'} {CRANK_BAR:.0f}° (a real "
+          f"per-node crank, like Venus/Earth in R-N38).")
+    print(f"  → H-N45c {'SUPPORTED' if c_ok else 'REFUTED'}: it is a fast FLYBY not a capture at EVERY epoch — "
+          f"cheapest capture dv {dv_worst:.2f} km/s {'>' if c_ok else '≤'} the {CAPTURE_BUDGET:.1f} km/s DSM "
+          f"budget (hot-arrival, not near-capture).")
 
     print(f"\n  → verdicts: H-N45a {'SUPPORTED' if a_ok else 'REFUTED'}, "
           f"H-N45b {'SUPPORTED' if b_ok else 'REFUTED'}, H-N45c {'SUPPORTED' if c_ok else 'REFUTED'}")
     if a_ok and b_ok and c_ok:
+        vinf_hi = max(r["vinf_M"] for r in rows)
+        ceil_hi = max(r["ceil"] for r in rows)
         print("  NET: the pumped tour reaches Mars as a HOT, crank-capable FLYBY — the OPPOSITE trade from a")
         print("    Hohmann arrival. One bounded DSM (≤1 km/s, R-N43) buys the phasing to REACH Mars, but the")
-        print(f"    pumped orbit's energy delivers a fast {vinf_best:.1f} km/s hyperbolic excess (≫ Hohmann's "
-              f"{HOHMANN_VINF}) —")
-        print(f"    enough to make Mars a genuine inclination-crank node (ceiling {ceil_best:.0f}°), while capture")
-        print(f"    into a bound Mars orbit would cost ≥ {dv_min:.1f} km/s of braking (≫ the reach budget). So the")
+        print(f"    pumped orbit's energy delivers a fast {vinf_worst:.1f}–{vinf_hi:.1f} km/s hyperbolic excess "
+              f"(≫ Hohmann's {HOHMANN_VINF}) —")
+        print(f"    enough to make Mars a genuine inclination-crank node (ceiling {ceil_worst:.0f}–{ceil_hi:.0f}°), "
+              f"while capture")
+        print(f"    into a bound Mars orbit would cost ≥ {dv_worst:.1f} km/s of braking (≫ the reach budget). So the")
         print("    pumped/crank tour EXTENDS to Mars as a crank node, but Mars orbit insertion is a separate,")
         print("    expensive maneuver the free flyby budget does not afford — cheap-to-REACH, hot-to-ARRIVE.")
     print("    Scope: R-N43's two well-phased epochs, grid-min DSM (upper bound), parabolic-limit capture dv")
