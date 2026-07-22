@@ -50,6 +50,7 @@ sys.path.insert(0, ".")
 sys.path.insert(0, "scripts")
 jax.config.update("jax_enable_x64", True)
 
+import beam_constrained_tour as B         # noqa: E402  (pair() for the wide/dense stall diagnostic)
 import constrained_tour_discovery as C   # noqa: E402
 import mars_dsm as M                      # noqa: E402  (adds Mars to C's MU_P/RP/SOI; earth_node, min_dsm)
 import mars_arrival as MA                 # noqa: E402  (R-N45 arrival_state)
@@ -73,7 +74,13 @@ def mars_arrival_node(sjd, off):
     if md is None:
         return None
     dfly, phi, tof, frac = float(g[0]), float(g[1]), float(g[2]), float(g[3])
-    _dsm, st2, _miss = MA.arrival_state("earth", dfly, phi, tof, frac, vinn, jnp.float64(jdn))
+    _dsm, st2, arr_miss = MA.arrival_state("earth", dfly, phi, tof, frac, vinn, jnp.float64(jdn))
+    # arrival_state documents sub-SOI closure as required to trust st2; min_dsm's closure is a SEPARATE solve,
+    # so validate the re-solved arrival here before deriving the Mars v_inf vector from it (guards a silent
+    # divergence, not an expected failure — the grid row was found sub-SOI and the re-solve is deterministic).
+    if float(arr_miss) >= C.SOI_KM["mars"]:
+        raise AssertionError(f"arrival did not close at Mars for t0+{off:.0f}: miss {float(arr_miss):.3e} km "
+                             f">= SOI {C.SOI_KM['mars']:.3e} km")
     jd_arr = jdn + tof
     _rM, vM = C.rv_p("mars", jd_arr)
     v_helio = jnp.asarray(np.asarray(st2[3:6]))
@@ -94,7 +101,47 @@ def run_epoch(sjd, off):
     ceil = float(np.degrees(np.arcsin(min(vmag0 / vP, 1.0))))
     dm0 = float(np.degrees(C.dmax_of("mars", vmag0)))
     legs = CW.crank_walk("mars", jd_arr, vin_mars)                 # R-N38 walk, Mars grid
-    return {"off": off, "i0": i0, "vmag0": vmag0, "ceil": ceil, "dm0": dm0, "legs": legs}
+    return {"off": off, "i0": i0, "vmag0": vmag0, "ceil": ceil, "dm0": dm0, "legs": legs,
+            "jd_arr": jd_arr, "vin_mars": vin_mars}
+
+
+def diagnose_stall(r):
+    """If the walk stalled (one big raise then flat), verify the stall is PHYSICAL, not a surfacing artifact:
+    reproduce crank 1, then WIDE/DENSE enumerate GN-closed returns at the post-crank-1 node (tof 300-2100 d,
+    finer turn/phi/GN than the walk grid) and report the max achievable i_out. If nothing materially raises,
+    the sparse Mars resonance ladder genuinely offers no follow-up. Returns (verdict_str, max_i, cur_i)."""
+    jd0, vin0 = r["jd_arr"], r["vin_mars"]
+    rM0, vM0 = C.rv_p("mars", jd0)
+    sols = CW.crank_continuations("mars", jd0, vin0)
+    if not sols:
+        return "no crank-1 return", 0.0, r["i0"]
+    _i1, s1 = max(((CW._ang_deg(jnp.cross(rM0, vM0 + C.rodrigues(vin0, s["dmax"] * jnp.tanh(s["u"][0]), s["u"][1])),
+                                jnp.cross(rM0, vM0)), s) for s in sols), key=lambda x: x[0])
+    jd1, vin1 = jd0 + s1["tof"], s1["vinf_arr"]
+    rM1, vM1 = C.rv_p("mars", jd1)
+    cur_i = CW._ang_deg(jnp.cross(rM1, vM1 + vin1), jnp.cross(rM1, vM1))
+    # wide/dense post-crank-1 grid: 11 turn x 24 phi x 46 tof (300-2100 d, incl. 3:1 at ~2061)
+    grid = np.array(np.meshgrid(np.linspace(-3.0, 3.0, 11), np.linspace(0, 2 * np.pi, 24, endpoint=False),
+                                np.linspace(300, 2100, 46))).reshape(3, -1).T
+    scan_miss, gn, leg_out = B.pair("mars", "mars")
+    m = np.array(scan_miss(jnp.asarray(grid), vin1, jd1))
+    seen, best_i, tried = [], cur_i, 0
+    for idx in np.argsort(m):
+        u0 = grid[idx]
+        if any(abs(u0[2] - s[2]) < 20.0 and abs((u0[1] - s[1] + np.pi) % (2 * np.pi) - np.pi) < 0.5
+               and abs(u0[0] - s[0]) < 0.5 for s in seen):
+            continue
+        seen.append(u0)
+        u, miss = gn(jnp.asarray(u0), vin1, jd1)
+        tried += 1
+        if float(miss) < C.SOI_KM["mars"] and float(jnp.linalg.norm(leg_out(u, vin1, jd1)[0])) <= C.VCAP and float(u[2]) > 20.0:
+            _va, _turn, dm = leg_out(u, vin1, jd1)
+            i_out = CW._ang_deg(jnp.cross(rM1, vM1 + C.rodrigues(vin1, dm * jnp.tanh(u[0]), u[1])), jnp.cross(rM1, vM1))
+            best_i = max(best_i, i_out)
+        if tried >= 80:
+            break
+    verdict = "ARTIFACT (a raising return the walk missed)" if best_i > cur_i + 1.0 else "PHYSICAL (sparse resonance ladder — no raising re-closing return)"
+    return verdict, best_i, cur_i
 
 
 def summarize(r):
@@ -149,10 +196,22 @@ def verify(args):
     if 200.0 not in res:
         print("  primary epoch (t0+200) produced no arrival — cannot judge; aborting.")
         return
-    report_verdicts(res)
+
+    # If the primary stalled (one big raise then flat), run the wide/dense post-step diagnostic so the
+    # "PHYSICAL, not artifact" claim is REPRODUCIBLE from --verify (not just an external script).
+    diag = None
+    sp = summarize(res[200.0])
+    if sp["best_run"] < 3 and sp["frac"] < 0.5 and res[200.0]["legs"]:
+        print("  [primary t0+200 stalled — wide/dense post-crank-1 diagnostic (tof 300-2100 d): physical or artifact?]",
+              flush=True)
+        verdict, best_i, cur_i = diagnose_stall(res[200.0])
+        print(f"    max achievable i_out {best_i:.2f}° vs current {cur_i:.2f}° (Δ{best_i - cur_i:+.2f}) → {verdict}\n",
+              flush=True)
+        diag = (verdict, best_i, cur_i)
+    report_verdicts(res, diag)
 
 
-def report_verdicts(res):
+def report_verdicts(res, diag=None):
     # The result INVERTED my pre-registration (I predicted t0+200 would crank best; it stalls, t0+600 climbs).
     # To avoid BOTH sins — misrepresenting the t0+600 success as a pure REFUTED, and cherry-picking it into a
     # pure SUPPORTED (the favorable-extremum sin) — the verdict is reported HONESTLY PER-EPOCH and labelled
@@ -178,8 +237,9 @@ def report_verdicts(res):
     print(f"  → H-N46b {lab_b}: ceiling approachability is EPOCH-INVERTED — primary t0+200 {p['i_max']:.1f}° = "
           f"{100 * p['frac']:.0f}% ({'≥' if prim_b else '<'}50%), {hi_txt}{hi_mark}. "
           f"The LOW-v∞ arrival I predicted would crank best stalls; the HIGH-v∞ arrival chains past 50%.")
+    scope_txt = "at BOTH epochs" if h else "at the primary epoch (t0+600 absent)"
     print(f"  → H-N46c {'SUPPORTED' if c_ok else 'REFUTED'}: the Mars crank is "
-          f"{'FREE and non-destructive at BOTH epochs' if c_ok else 'NOT free'} — every leg ballistically "
+          f"{'FREE and non-destructive ' + scope_txt if c_ok else 'NOT free'} — every leg ballistically "
           f"re-closed (sub-SOI), |v∞| drift {max_drift:.2f}% {drift_op} 2%.")
 
     print(f"\n  → verdicts (pre-registered PRIMARY t0+200): H-N46a {'SUPPORTED' if prim_a else 'REFUTED'}, "
@@ -187,19 +247,22 @@ def report_verdicts(res):
           f"— going-in lean REFUTED (the dependence is inverted).")
     print("  NET (CORRECTS my going-in lean): the inclination crank DOES transfer to Mars — but in the OPPOSITE")
     print("    regime from my prediction. My δmax reasoning (big δmax ≳ ceiling → few flybys → easy) was backwards:")
+    stall_kind = (f"{diag[0].split('(')[0].strip()} — post-step search max i_out {diag[1]:.2f}° vs {diag[2]:.2f}° "
+                  f"(Δ{diag[1] - diag[2]:+.2f})" if diag else "stall (diagnostic not run)")
     print(f"    the LOW-v∞ t0+200 arrival (δmax 18.8° ≳ ceiling 17.2°) takes ONE big step to {p['i_max']:.1f}° and then")
-    print("    PHYSICALLY STALLS (a wide/dense post-step search finds no raising re-closing Mars return — the sparse")
+    print(f"    STALLS — {stall_kind}: no raising re-closing Mars return, the sparse")
     if h:
-        print("    687/1374-d resonance ladder offers no follow-up after a large rotation), while the HIGH-v∞ t0+600")
+        print("    687/1374-d resonance ladder offers no follow-up after a large rotation, while the HIGH-v∞ t0+600")
         print(f"    arrival (δmax 6.2° ≪ ceiling 34.8°) chains {h['n']} small re-closing steps to {h['i_max']:.1f}° = "
               f"{100 * h['frac']:.0f}% of ceiling.")
     print("    Mechanism: a SUSTAINED Mars crank needs MANY SMALL re-closing steps (high v∞ / small δmax), not one")
     print("    big rotation — the realized fraction is NON-monotone (inverted) in δmax. The high-v∞ arrival wins")
     print("    twice: higher ceiling AND higher realized fraction (23.8° absolute vs 5.8°). Mars IS a genuine crank")
     print("    node — for HOT arrivals. H-N46c holds: exactly ballistic, |v∞| conserved to <0.1%.")
+    stall_scope = ("; t0+200 stall confirmed PHYSICAL by the wide/dense post-step enumeration above (tof 300-2100 d)"
+                   if diag and "PHYSICAL" in diag[0] else "")
     print("    Scope: R-N45's two arrival epochs, greedy max-i over dense phi-aware surfacing, ≤8 cranks, Mars-")
-    print("    retuned tof grid, exactly ballistic; t0+200 stall confirmed PHYSICAL by a wide/dense post-step")
-    print("    enumeration (tof 300-2100 d). Mechanism/DISCOVERY study, never a Δv beat (418e2e2).")
+    print(f"    retuned tof grid, exactly ballistic{stall_scope}. Mechanism/DISCOVERY study, never a Δv beat (418e2e2).")
 
 
 def main():
