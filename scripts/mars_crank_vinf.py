@@ -17,7 +17,7 @@ running the exact-ballistic crank walk at each — at TWO geometries (t0+200, t0
           geometries. REFUTE-BY: one geometry does not show a monotone stall->chain raise-run trend.
 
 ONE knob = |v_inf| at fixed (epoch, v_inf-direction). Crank machinery = R-N38/R-N46, but with a DENSER crank
-surfacing grid (13x32x60 seeds, 200 GN starts) than the standard 7x16x28/24: a zero-diagnostic found the
+surfacing grid (13x32x60 seeds, 200 GN starts) than the standard 7x16x24/24: a zero-diagnostic found the
 standard grid produces SPURIOUS run=0 "stalls" at some scaled magnitudes (0 closed returns reported where a
 wide search closes 100+), which would corrupt the raise-run trend. With the dense grid a run=0 is a PHYSICAL
 absence of closed resonant returns (verified: at t0+200 v_inf=10 even a wide search finds none), not a grid
@@ -46,7 +46,7 @@ import constrained_tour_discovery as C   # noqa: E402
 import mars_crank as MC                   # noqa: E402  (mars_arrival_node, summarize; retunes CW grid on import)
 import crank_walk as CW                   # noqa: E402  (crank_walk with the Mars grid)
 
-# The STANDARD crank grid (7x16x28 seeds, 24 GN starts) has surfacing GAPS across a scaled-|v_inf| sweep: the
+# The STANDARD crank grid (7x16x24 seeds, 24 GN starts) has surfacing GAPS across a scaled-|v_inf| sweep: the
 # R-N47 zero-diagnostic found magnitudes where it reports 0 closed resonant returns while a wide/dense search
 # closes 100+ (spurious "stall" zeros that would corrupt the raise-run trend). Use a DENSER grid + more GN
 # starts so the surfacing is trustworthy — a genuine run=0 then means a PHYSICAL absence of returns, not a grid
@@ -168,7 +168,7 @@ def report_verdicts(sweeps):
     print("    its larger ceiling within ≤8 cranks. So NO low-|v∞| 'stall' (H-N47b REFUTED) and fraction does not")
     print("    RISE with |v∞| (H-N47a REFUTED — it falls). And the law is geometry-DEPENDENT (H-N47c REFUTED):")
     print("    t0+200 is erratic with a PHYSICAL no-return at v∞≈10. **The decisive lesson is INSTRUMENTAL: the")
-    print("    standard crank grid (7×16×28/24-GN) SYSTEMATICALLY UNDERCOUNTS — the sparse-grid sweep gave a")
+    print("    standard crank grid (7×16×24/24-GN) SYSTEMATICALLY UNDERCOUNTS — the sparse-grid sweep gave a")
     print("    materially DIFFERENT (wrong) answer (apparent low-|v∞| stalls, fraction rising) that a zero-")
     print("    diagnostic flagged as surfacing artifacts; the dense grid (13×32×60/200-GN) overturned it.** This")
     print("    also corrects R-N46: its 'high-v∞ cranks better' compared two DIFFERENT geometries — at FIXED")
