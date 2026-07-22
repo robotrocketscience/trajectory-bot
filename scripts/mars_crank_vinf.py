@@ -91,6 +91,15 @@ def monotone_noninc(xs, eps=1e-9):
     return all(b <= a + eps for a, b in zip(xs, xs[1:]))
 
 
+def strict_dir(xs, eps=1e-9):
+    """+1 if strictly increasing, -1 if strictly decreasing, 0 otherwise (incl. flat/constant)."""
+    if all(b > a + eps for a, b in zip(xs, xs[1:])):
+        return 1
+    if all(b < a - eps for a, b in zip(xs, xs[1:])):
+        return -1
+    return 0
+
+
 def verify(args):
     print("=== R-N47: is R-N46's Mars-crank inversion a v_inf-MAGNITUDE effect or a GEOMETRY confound? ===")
     if not C.F._require_cache():
@@ -127,17 +136,18 @@ def report_verdicts(sweeps):
     fracs = [r["frac"] for r in prim]
     runs = [r["run"] for r in prim]
     o = sweeps.get(200.0)
-    ofr = [round(100 * r["frac"]) for r in o] if o else None
+    ofr_txt = f"{[round(100 * r['frac']) for r in o]}%" if o else "n/a"
     # H-N47a: fraction RISES monotonically with |v_inf| at the primary geometry.
     a_ok = monotone_nondec(fracs)
     a_falls = monotone_noninc(fracs)                      # the corrected finding: it DECREASES
     # H-N47b: raise-run has a stall THRESHOLD (crosses <=2 -> >=3). With dense surfacing the low-|v_inf| runs
     # do NOT stall, so there is no crossing.
     b_ok = monotone_nondec(runs) and min(runs) <= 2 and max(runs) >= 3
-    # H-N47c: geometry-robust — the SAME |v_inf|->fraction trend holds at both geometries (both monotone same way).
-    prim_mono = monotone_nondec(fracs) or monotone_noninc(fracs)
-    other_mono = o is not None and (monotone_nondec([r["frac"] for r in o]) or monotone_noninc([r["frac"] for r in o]))
-    c_ok = o is not None and prim_mono and other_mono and (monotone_noninc(fracs) == monotone_noninc([r["frac"] for r in o]))
+    # H-N47c: geometry-robust — the SAME STRICT |v_inf|->fraction trend at both geometries. strict_dir treats a
+    # flat sequence as "no trend" (0), so a flat geometry cannot spuriously satisfy the same-direction test.
+    prim_dir = strict_dir(fracs)
+    other_dir = strict_dir([r["frac"] for r in o]) if o else 0
+    c_ok = o is not None and prim_dir != 0 and prim_dir == other_dir
 
     print(f"  → H-N47a {'SUPPORTED' if a_ok else 'REFUTED'}: fraction does NOT rise with |v_inf| at fixed "
           f"geometry — t0+600 fractions {[round(100 * f) for f in fracs]}% "
@@ -146,7 +156,7 @@ def report_verdicts(sweeps):
           f"lowest |v∞| already CHAINS (min run {min(runs)} ≥ 3), no stall→chain crossing. (The sparse-grid "
           f"'low-|v∞| stall' was a SURFACING ARTIFACT — the dense grid closes returns it missed.)")
     print(f"  → H-N47c {'SUPPORTED' if c_ok else 'REFUTED'}: the |v∞|→fraction law is NOT geometry-robust — "
-          f"t0+600 {[round(100 * f) for f in fracs]}% (clean decrease) vs t0+200 {ofr}% "
+          f"t0+600 {[round(100 * f) for f in fracs]}% (clean decrease) vs t0+200 {ofr_txt} "
           f"({'erratic — incl. a PHYSICAL no-return at v∞≈10' if o else 'absent'}); the trend differs by geometry.")
 
     print(f"\n  → verdicts: H-N47a {'SUPPORTED' if a_ok else 'REFUTED'}, H-N47b {'SUPPORTED' if b_ok else 'REFUTED'}, "

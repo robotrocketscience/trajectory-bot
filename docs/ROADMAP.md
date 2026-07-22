@@ -1056,9 +1056,10 @@ SATURATES its small ceiling; a high-v∞ arrival's small δmax chains more steps
 larger ceiling in ≤8 cranks). **H-N47a REFUTED** (fraction falls, not rises), **H-N47b REFUTED** (NO stall —
 even the lowest v∞ chains, min raise-run 4; the sparse "low-v∞ stall" was a surfacing artifact), **H-N47c
 REFUTED** (geometry-DEPENDENT — t0+200 is erratic [99,40,8,62,67,68]% with a PHYSICAL no-return at v∞≈10).
-**NET: corrects my R-N47 lean AND R-N46 — at fixed geometry low-v∞ cranks a HIGHER fraction and does not stall;
-the decisive lesson is INSTRUMENTAL (recurring R-N38/R-N42/R-N47): the crank surfacing-grid density is
-load-bearing, and a run=0 / "stall" must be validated against a wide/dense search before it is trusted.** Verdict
+**NET: corrects my R-N47 lean AND R-N46 — at the t0+600 geometry in this sweep, low-v∞ cranks a HIGHER fraction
+and does not stall (behaviour is geometry-dependent — t0+200 differs, with a physical no-return at v∞≈10); the
+decisive lesson is INSTRUMENTAL (recurring R-N38/R-N42/R-N47): the crank surfacing-grid density is load-bearing,
+and a run=0 / "stall" must be validated against a wide/dense search before it is trusted.** Verdict
 logic refactored to `report_verdicts()` + unit-tested on the dense data. Scope: two fixed geometries, synthetic
 |v∞| scaling (controlled probe, not tour-delivered), ≤8 cranks. **R-N48 candidates: re-verify R-N46's numbers
 with the dense grid + adopt it in mars_crank.py; lift the ≤8-crank cap (do high-v∞ fractions climb past 82%?);
