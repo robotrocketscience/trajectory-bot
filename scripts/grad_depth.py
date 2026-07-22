@@ -91,7 +91,7 @@ def verify(args):
             g1 = abs(g)
         rows.append({"d": d, "v": v_d, "g": g, "fd": fd, "relerr": relerr, "fv": fv})
         print(f"    {d:2d}    {v_d:8.3f}   {g:+.4e}   {fd:+.4e}   {relerr:6.1%}   {abs(g):.3e}   "
-              f"{abs(g) / g1:5.2f}", flush=True)
+              f"{abs(g) / g1 if g1 else float('nan'):5.2f}", flush=True)
 
     # ---- h-sensitivity at depth 6: does relerr SHRINK as the FD step resolves the deep landscape's curvature?
     print("\n  [h-sensitivity at depth 6 — is the relerr an FD-truncation artifact (curvier deep landscape)?]")
@@ -113,6 +113,10 @@ def verify(args):
     relerrs = [r["relerr"] for r in rows]
     finite = all(np.isfinite(r["g"]) and np.isfinite(r["fd"]) for r in rows)
     no_explode = all(abs(r["g"]) < 1e4 * (abs(r["fd"]) + 1e-12) for r in rows)
+    if n < 2 or grads[0] == 0.0:
+        print("\n  no depth sweep possible — chain has < 2 legs or a zero baseline gradient; "
+              "attenuation and the H-N50b verdict are undefined.")
+        return
     atten = grads[-1] / grads[0]
     fd_shrinks = relerrs_h[-1] < relerrs_h[0] * 0.5     # smaller h roughly halves the relerr -> FD truncation
 
