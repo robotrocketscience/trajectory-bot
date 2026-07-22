@@ -57,7 +57,7 @@ def greedy_chain(t0):
     b = ER._capped_launch(t0)
     if b is None:
         return None
-    u_l, miss_l, seed_v, vinf_vec, lt = b
+    _u_l, _miss_l, seed_v, vinf_vec, lt = b
     root = {"at": "venus", "jd": t0 + lt, "vin": vinf_vec, "legs": [],
             "mag": float(jnp.linalg.norm(vinf_vec)), "seed_v": seed_v, "launch_tof": lt}
     return root, _greedy_from(root)
@@ -78,7 +78,8 @@ def verify(args):
     for label, t0 in (("t0+400 (pumps)", sjd + 400.0), ("t0+1000 (fails)", t_fail)):
         gc = greedy_chain(t0)
         if gc is None:
-            print(f"    {label}: no viable launch"); continue
+            print(f"    {label}: no viable launch")
+            continue
         root, best = gc
         cs = B.continuations("venus", root["jd"], root["vin"])
         mx = max((c["arr_mag"] for c in cs), default=0.0)
@@ -87,7 +88,7 @@ def verify(args):
         print(f"    {label}: launch v inf {root['mag']:.2f}, {len(cs)} continuations, MAX arrival v inf "
               f"{mx:.2f}, chain {arrs} -> final {best['mag']:.2f}")
 
-    seed_f, mx_f, ncs_f = node_max["t0+1000 (fails)"]
+    seed_f, mx_f, _ncs_f = node_max["t0+1000 (fails)"]
     a_ok = mx_f <= seed_f + 0.5          # no pumping basin in the FULL set (not greedy myopia)
 
     # (H-N44b) epoch shifts
@@ -96,7 +97,8 @@ def verify(args):
     for d in (-60, -30, -15, 0, 15, 30, 60):
         gc = greedy_chain(t_fail + d)
         if gc is None:
-            print(f"    t0+1000{d:+4d}: no viable launch"); continue
+            print(f"    t0+1000{d:+4d}: no viable launch")
+            continue
         root, best = gc
         pumps = best["mag"] > PUMP_THRESH
         if d != 0 and pumps:
@@ -115,18 +117,30 @@ def verify(args):
             if float(miss) < C.SOI_KM["venus"] and 0.0 < vmag <= ER.LAUNCH_VMAX:
                 seen.append((vmag, lt, arr(u, jnp.float64(t_fail), jnp.float64(lt))))
     seen.sort(key=lambda x: -x[0])
-    best_higher = 0.0
-    tried = []
-    for vmag, lt, vv in seen[:5]:
+    # evaluate EVERY launch strictly higher than the min-|v inf| seed (not just a top-few sample), and bind
+    # the reported pump to the launch that actually achieved it (CodeRabbit: don't conflate max-v inf with
+    # max-pump). Dedupe near-identical (v inf, tof) launches the multi-start scan repeats.
+    cands, seen_keys = [], set()
+    for vmag, lt, vv in seen:
+        if vmag <= seed_f + 1e-6:
+            continue
+        key = (round(vmag, 2), round(lt, 0))
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        cands.append((vmag, lt, vv))
+    best_higher, best_launch = 0.0, None
+    for vmag, lt, vv in cands:
         root = {"at": "venus", "jd": t_fail + lt, "vin": vv, "legs": [], "mag": float(jnp.linalg.norm(vv))}
         best = _greedy_from(root)
-        best_higher = max(best_higher, best["mag"])
-        tried.append((vmag, best["mag"]))
+        if best["mag"] > best_higher:
+            best_higher, best_launch = best["mag"], (vmag, lt)
         print(f"    launch v inf {vmag:.2f} (tof {lt:.0f}): final {best['mag']:.2f} "
               f"-> {'PUMPS' if best['mag'] > PUMP_THRESH else 'flat'}")
     vlo = min(s[0] for s in seen) if seen else 0.0
     vhi = max(s[0] for s in seen) if seen else 0.0
-    c_ok = best_higher > PUMP_THRESH
+    # c_ok requires an ACTUALLY-higher launch (v inf > seed) that pumps past the threshold
+    c_ok = best_launch is not None and best_launch[0] > seed_f and best_higher > PUMP_THRESH
 
     print(f"\n  → H-N44a {'SUPPORTED' if a_ok else 'REFUTED'}: the t0+1000 min-|v inf| launch node has "
           f"{'NO pumping continuation' if a_ok else 'a pumping continuation greedy skipped'} — full set max "
@@ -134,16 +148,18 @@ def verify(args):
     print(f"  → H-N44b {'SUPPORTED' if b_ok else 'REFUTED'}: the pump-dead zone is "
           f"{'NARROW' if b_ok else 'broad'} — epoch shifts {sorted(recovered)} d recover pumping "
           f"(final v inf > {PUMP_THRESH:.0f}) within ±60 d.")
+    win = f"v inf {best_launch[0]:.2f}" if best_launch else "none"
     print(f"  → H-N44c {'SUPPORTED' if c_ok else 'REFUTED'}: a higher-v inf launch at the SAME epoch "
-          f"{'PUMPS' if c_ok else 'does NOT pump'} — best final {best_higher:.2f} from launches in "
-          f"[{vlo:.2f}, {vhi:.2f}] (the min-|v inf| rule landed on a pump-dead node).")
+          f"{'PUMPS' if c_ok else 'does NOT pump'} — best final {best_higher:.2f} from launch {win} "
+          f"(all {len(cands)} launches with v inf > seed {seed_f:.2f} in [{vlo:.2f}, {vhi:.2f}] evaluated; "
+          f"the min-|v inf| rule landed on a pump-dead node).")
 
     print(f"\n  → verdicts: H-N44a {'SUPPORTED' if a_ok else 'REFUTED'}, "
           f"H-N44b {'SUPPORTED' if b_ok else 'REFUTED'}, H-N44c {'SUPPORTED' if c_ok else 'REFUTED'}")
     print("  NET (CORRECTS R-N39): t0+1000 is NOT a genuine pump-failure epoch. R-N39's min-|v inf| launch rule")
-    print(f"    (conservative/free) landed on a launch node whose continuations are all v inf-neutral (no pumping")
-    print(f"    basin — H-N44a), so the greedy chain stalled at the seed. But the epoch is fine: a ≥30 d shift")
-    print(f"    recovers a full pump (H-N44b), AND a higher-v inf launch ({vhi:.1f} vs the min {seed_f:.1f}) at the")
+    print("    (conservative/free) landed on a launch node whose continuations are all v inf-neutral (no pumping")
+    print("    basin — H-N44a), so the greedy chain stalled at the seed. But the epoch is fine: a ≥30 d shift")
+    print(f"    recovers a full pump (H-N44b), AND a higher-v inf launch ({win} vs the min {seed_f:.1f}) at the")
     print(f"    SAME epoch pumps to {best_higher:.1f} (H-N44c — my going-in lean that launch v inf wouldn't matter")
     print("    was REFUTED). The 'pump-failure mode' is a launch-node-selection artifact of choosing the minimum")
     print("    launch v inf, not a phasing dead-spot. Honest correction: R-N39's '1/8 distinct pump-failure' is")

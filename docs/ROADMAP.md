@@ -977,11 +977,11 @@ hypotheses SUPPORTED, and R-N39 is corrected.** H-N44a: at the min-|v∞| launch
 continuation set (4 basins) has no pumping leg — max arrival v∞ 4.21 = seed, so it is **not greedy myopia**
 but a genuinely v∞-neutral node (contrast t0+400: 8 continuations, max arrival 7.92, chain climbs to 17.47).
 H-N44b: the pump-dead zone is **narrow** — epoch shifts −60/−30/−15/+30 d recover a full pump (10–16),
-while +0/+15 stay flat. H-N44c: **a higher-v∞ launch (6.85, still ≤8) at the SAME epoch pumps to 16.44** —
+while +0/+15 stay flat. H-N44c: **a higher-v∞ launch (6.70, still ≤8) at the SAME epoch pumps to 17.08** —
 **refuting my going-in lean** that launch v∞ wouldn't matter if the geometry lacked a pumping handoff (a
 higher launch reaches a *different* node that has pumping continuations). **NET: t0+1000 is NOT a genuine
 pump-failure epoch — R-N39's conservative min-|v∞| launch rule landed on a v∞-neutral node, so the greedy
-chain stalled at the seed; both a ≥30 d shift and a higher-v∞ launch at the same epoch pump to ~16. The
+chain stalled at the seed; both a ≥30 d shift and a higher-v∞ launch at the same epoch pump to ~17. The
 "1/8 distinct pump-failure mode" is reclassified as a launch-node-selection artifact of the min-v∞
 heuristic, not a phasing dead-spot; the true no-pump rate is lower than R-N39 reported.** Scope: one epoch,
 greedy==beam proxy, LAUNCH_VMAX=8. **R-N45 candidates: a pumped Mars-ARRIVAL tour (R-N43 DSM leg + crank at
