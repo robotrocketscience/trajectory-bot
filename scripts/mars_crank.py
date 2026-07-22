@@ -13,13 +13,17 @@ deg EXCEEDS the 17 deg ceiling (one flyby nearly saturates); at t0+600 (v_inf 14
 35 deg ceiling (many taxed steps). So the crank may realize cleanly at the low-v_inf arrival and be re-closure-
 taxed at the high-v_inf one — an epoch-conditioned answer.
 
-RESULT (2026-07-22) — this going-in lean was REFUTED, INVERTED: the LOW-v_inf t0+200 arrival takes ONE big step
-then PHYSICALLY STALLS at 34% of ceiling (a wide/dense post-step search finds no raising re-closing return —
-the sparse Mars resonance ladder offers no follow-up after a large rotation), while the HIGH-v_inf t0+600
-arrival chains 8 small re-closing steps to 68% of ceiling (23.8 deg). A SUSTAINED Mars crank needs MANY SMALL
-re-closing steps, not one big rotation; the realized fraction is NON-monotone (inverted) in delta_max. Verdicts
-below judge the pre-registered PRIMARY (t0+200) plainly (a/b REFUTED) and report the t0+600 realization as MIXED
-rather than cherry-picking it into a clean SUPPORTED. H-N46c holds (exactly ballistic, |v_inf| conserved).
+RESULT (2026-07-22) — this going-in lean was REFUTED: the LOW-v_inf t0+200 arrival takes ONE big step then
+PHYSICALLY STALLS at ~33% of ceiling (a wide/dense post-step search finds no raising re-closing return — the
+sparse Mars resonance ladder offers no follow-up after a large rotation), while the HIGH-v_inf t0+600 arrival
+chains small re-closing steps to ~72% of ceiling (~25 deg). Verdicts below judge the pre-registered PRIMARY
+(t0+200) plainly (a/b REFUTED) and report the t0+600 realization as MIXED rather than cherry-picking it into a
+clean SUPPORTED. H-N46c holds (exactly ballistic, |v_inf| conserved). NOTE (R-N47/R-N48): the tempting reading
+"high-v_inf wins because the fraction is inverted in delta_max" was itself REFUTED — R-N47 showed the fraction-
+vs-|v_inf| relationship is GEOMETRY-DEPENDENT (at fixed geometry the fraction DECREASES with |v_inf|), not a
+clean delta_max inversion; R-N48 re-verified these two REAL arrivals with the dense grid (now adopted here) and
+R-N46's verdicts are unchanged (numbers 33% / 72%). So: crank transfers to Mars, arrival-dependent, exactly
+ballistic — the fraction law is geometry-dependent (see mars_crank_vinf.py / mars_crank_reverify.py).
 
   H-N46a  the crank mechanism TRANSFERS to Mars: >= 3 CONSECUTIVE GN-closed resonant Mars returns each RAISE
           i_rel (zero DSM). REFUTE-BY: < 3 consecutive raising returns.
@@ -56,11 +60,17 @@ import mars_dsm as M                      # noqa: E402  (adds Mars to C's MU_P/R
 import mars_arrival as MA                 # noqa: E402  (R-N45 arrival_state)
 import crank_walk as CW                   # noqa: E402  (R-N38 crank machinery — reused verbatim)
 
-# Retune R-N38's crank tof grid to Mars's ~687-d period. crank_continuations reads this module global, so
-# rebinding it here makes the reused R-N38 walk enumerate Mars resonant returns (687 = 1:1, 1374 = 2:1).
-CW._CRANK_GRID = np.array(np.meshgrid(np.linspace(-2.0, 2.0, 7),
-                                      np.linspace(0, 2 * np.pi, 16, endpoint=False),
-                                      np.linspace(400, 1450, 28))).reshape(3, -1).T
+# Retune R-N38's crank tof grid to Mars's ~687-d period (crank_continuations reads this module global), and
+# DENSIFY it: R-N47 found the standard 7x16x28 / 24-GN grid UNDERCOUNTS resonant Mars returns at some
+# magnitudes (0 closed where a wide search finds 100+), and R-N48 confirmed the dense 13x32x60 / 200-GN grid
+# is the right instrument (R-N46's real-arrival numbers hold under it). Adopted as the default here to retire
+# the sparse-grid debt. (Original R-N46 verdicts used the sparse grid; they are UNCHANGED under the dense grid
+# — only the numbers shift slightly: t0+200 34%->33%, t0+600 68%->72%.)
+CW._CRANK_GRID = np.array(np.meshgrid(np.linspace(-3.0, 3.0, 13),
+                                      np.linspace(0, 2 * np.pi, 32, endpoint=False),
+                                      np.linspace(350, 2100, 60))).reshape(3, -1).T
+_ORIG_CC = CW.crank_continuations
+CW.crank_continuations = lambda at, jd, vin, max_gn=200: _ORIG_CC(at, jd, vin, max_gn=max_gn)  # noqa: E731
 EPOCHS = ((200.0, "primary"), (600.0, "harder case"))
 
 
@@ -244,7 +254,7 @@ def report_verdicts(res, diag=None):
 
     print(f"\n  → verdicts (pre-registered PRIMARY t0+200): H-N46a {'SUPPORTED' if prim_a else 'REFUTED'}, "
           f"H-N46b {'SUPPORTED' if prim_b else 'REFUTED'}, H-N46c {'SUPPORTED' if c_ok else 'REFUTED'} "
-          f"— going-in lean REFUTED (the dependence is inverted).")
+          f"— going-in lean REFUTED (I predicted t0+200 would crank best; t0+600 does).")
     print("  NET (CORRECTS my going-in lean): the inclination crank DOES transfer to Mars — but in the OPPOSITE")
     print("    regime from my prediction. My δmax reasoning (big δmax ≳ ceiling → few flybys → easy) was backwards:")
     stall_kind = (f"{diag[0].split('(')[0].strip()} — post-step search max i_out {diag[1]:.2f}° vs {diag[2]:.2f}° "
@@ -255,10 +265,12 @@ def report_verdicts(res, diag=None):
         print("    687/1374-d resonance ladder offers no follow-up after a large rotation, while the HIGH-v∞ t0+600")
         print(f"    arrival (δmax 6.2° ≪ ceiling 34.8°) chains {h['n']} small re-closing steps to {h['i_max']:.1f}° = "
               f"{100 * h['frac']:.0f}% of ceiling.")
-    print("    Mechanism: a SUSTAINED Mars crank needs MANY SMALL re-closing steps (high v∞ / small δmax), not one")
-    print("    big rotation — the realized fraction is NON-monotone (inverted) in δmax. The high-v∞ arrival wins")
-    print("    twice: higher ceiling AND higher realized fraction (23.8° absolute vs 5.8°). Mars IS a genuine crank")
-    print("    node — for HOT arrivals. H-N46c holds: exactly ballistic, |v∞| conserved to <0.1%.")
+    print("    Mechanism: a SUSTAINED Mars crank needs MANY SMALL re-closing steps, not one big rotation, and at")
+    print("    these two real arrivals the hot t0+600 arrival realizes far more crank than t0+200. Mars IS a")
+    print("    genuine crank node for HOT arrivals. H-N46c holds: exactly ballistic, |v∞| conserved to <0.1%.")
+    print("    NOTE (R-N47/R-N48): the fraction-vs-|v∞| relationship is GEOMETRY-DEPENDENT (at fixed geometry the")
+    print("    fraction DECREASES with |v∞|), NOT a clean δmax inversion — the earlier 'wins twice / inverted in")
+    print("    δmax' reading was refuted; these numbers use the dense grid R-N48 verified (t0+200 ~33%, t0+600 ~72%).")
     stall_scope = ("; t0+200 stall confirmed PHYSICAL by the wide/dense post-step enumeration above (tof 300-2100 d)"
                    if diag and "PHYSICAL" in diag[0] else "")
     print("    Scope: R-N45's two arrival epochs, greedy max-i over dense phi-aware surfacing, ≤8 cranks, Mars-")
