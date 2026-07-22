@@ -1111,7 +1111,7 @@ shows it SHRINKS to 0% at h=0.005 → an FD-truncation artifact (curvier deep la
 loss. (b) Gradient does NOT vanish — attenuates GENTLY, |grad| 3.38e-2→9.13e-3 = ×0.27 over 6 flybys ≈
 ×0.77/leg (~0.6 orders, well inside the 2-order band); a launch perturbation still reaches the deep final v∞.
 (c) DIRECTIONALLY INFORMATIVE at depth 6 — a +0.5 d step along +grad moves final v∞ 16.272→16.278. Substructure:
-depths 4/5/6 are IDENTICAL (the terminal venus-venus-venus legs saturate — no v∞, same sensitivity), so the
+depths 4/5/6 are IDENTICAL (the terminal Venus-Venus-Venus legs saturate — no v∞, same sensitivity), so the
 depth-6 chain is effectively a depth-4 pump with two inert tail flybys. This EXPLAINS R-N41's modest polish gain
 (real but attenuating signal) and quantifies the north-star method's reach: differentiable polish works at
 depth, with gently diminishing — not vanishing, not exploding — launch sensitivity. Scope: one epoch, one chain,
