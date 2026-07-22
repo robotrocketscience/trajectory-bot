@@ -162,15 +162,17 @@ def verify(args):
     b_ok = both_present and all(r["ceil"] >= CRANK_BAR for r in rows)
     c_ok = both_present and all(r["dv_cap"] > CAPTURE_BUDGET for r in rows)
 
+    # SUPPORTED/REFUTED is governed by the all-epochs verdict (a_ok/…); the displayed inequality is derived
+    # from the metric itself, so a missing-epoch REFUTED never prints a false comparison (e.g. "7.85 < 4.0").
     print(f"\n  → H-N45a {'SUPPORTED' if a_ok else 'REFUTED'}: the handoff arrives HOT at EVERY epoch — coldest "
-          f"arrival v_inf {vinf_worst:.2f} km/s {'≥' if a_ok else '<'} {HOT_BAR:.1f} (vs Hohmann {HOHMANN_VINF}); "
-          f"the pumped orbit is highly energetic at Mars's radius.")
+          f"arrival v_inf {vinf_worst:.2f} km/s {'≥' if vinf_worst >= HOT_BAR else '<'} {HOT_BAR:.1f} "
+          f"(vs Hohmann {HOHMANN_VINF}); the pumped orbit is highly energetic at Mars's radius.")
     print(f"  → H-N45b {'SUPPORTED' if b_ok else 'REFUTED'}: Mars is a CRANK node at EVERY epoch — weakest crank "
-          f"ceiling arcsin(v_inf/v_Mars) {ceil_worst:.1f}° {'≥' if b_ok else '<'} {CRANK_BAR:.0f}° (a real "
-          f"per-node crank, like Venus/Earth in R-N38).")
+          f"ceiling arcsin(v_inf/v_Mars) {ceil_worst:.1f}° {'≥' if ceil_worst >= CRANK_BAR else '<'} "
+          f"{CRANK_BAR:.0f}° (a real per-node crank, like Venus/Earth in R-N38).")
     print(f"  → H-N45c {'SUPPORTED' if c_ok else 'REFUTED'}: it is a fast FLYBY not a capture at EVERY epoch — "
-          f"cheapest capture dv {dv_worst:.2f} km/s {'>' if c_ok else '≤'} the {CAPTURE_BUDGET:.1f} km/s DSM "
-          f"budget (hot-arrival, not near-capture).")
+          f"cheapest capture dv {dv_worst:.2f} km/s {'>' if dv_worst > CAPTURE_BUDGET else '≤'} the "
+          f"{CAPTURE_BUDGET:.1f} km/s DSM budget (hot-arrival, not near-capture).")
 
     print(f"\n  → verdicts: H-N45a {'SUPPORTED' if a_ok else 'REFUTED'}, "
           f"H-N45b {'SUPPORTED' if b_ok else 'REFUTED'}, H-N45c {'SUPPORTED' if c_ok else 'REFUTED'}")
