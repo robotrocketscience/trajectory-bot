@@ -132,14 +132,21 @@ def verify(args):
     norm_atten = norms[-1] / norms[0]
     ratio_live = live["ratio"]
 
-    a_ok = finite and no_explode and min(relerrs_h) < 0.25       # t0 gradient reliable once FD resolves curvature
+    # H-N51a's pre-registered wording: "analytic == central-FD IN SIGN [at every depth], relerr small once the FD
+    # step resolves curvature". So verify sign-agreement at EVERY depth (truncation-immune) + no explosion at every
+    # depth; the h-sweep at d_live establishes magnitude match. A per-depth relerr<0.25 gate is deliberately AVOIDED:
+    # a depth's h=0.05 relerr can be inflated by FD-truncation (R-N50's ltof relerr grew to 20% deep, resolving to 0%
+    # at smaller h), so gating on it would false-REFUTE on a truncation artifact, not a real gradient error.
+    sign_match = all(np.sign(r["gt0"]) == np.sign(r["fd"]) for r in rows)
+    a_ok = finite and no_explode and sign_match and min(relerrs_h) < 0.25
     b_ok = ratio_live > 1.0                                       # t0 dominates ltof at the deepest live depth
     c_ok = norm_atten > 1e-2                                      # 2-D norm within ~2 orders (not vanishing)
 
-    print(f"\n  → H-N51a {'SUPPORTED' if a_ok else 'REFUTED'}: ∂v_inf/∂t0 stays FINITE and FD-matched at every "
-          f"depth — no NaN/explosion (max |g_t0|/|FD| = {max(abs(r['gt0']) / (abs(r['fd']) + 1e-12) for r in rows):.2f}); "
-          f"t0-axis relerr {rows[0]['relerr']:.0%}→{rows[-1]['relerr']:.0%} across depth, min {min(relerrs_h):.0%} "
-          f"at h={hs[np.argmin(relerrs_h)]:.3f} (analytic t0 gradient reliable).")
+    print(f"\n  → H-N51a {'SUPPORTED' if a_ok else 'REFUTED'}: ∂v_inf/∂t0 stays FINITE, SIGN-matched and "
+          f"non-exploding at EVERY depth — max |g_t0|/|FD| = {max(abs(r['gt0']) / (abs(r['fd']) + 1e-12) for r in rows):.2f}; "
+          f"t0-axis relerr {rows[0]['relerr']:.0%}→{rows[-1]['relerr']:.0%} across depth, magnitude FD-matched at the "
+          f"deepest live depth {d_live} (h-sweep min {min(relerrs_h):.0%} "
+          f"at h={hs[np.argmin(relerrs_h)]:.3f} → analytic t0 gradient reliable).")
     print(f"  → H-N51b {'SUPPORTED' if b_ok else 'REFUTED'}: the t0 axis DOMINATES ltof at the deepest live depth "
           f"{d_live} — |g_t0|/|g_ltof| = {ratio_live:.2f} (>1); the ratio CROSSES OVER with depth "
           f"({rows[0]['ratio']:.2f} at d=1 where ltof leads → {rows[-1]['ratio']:.2f} at d={n}), so t0 dominance "
