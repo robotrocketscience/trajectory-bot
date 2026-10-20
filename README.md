@@ -1,20 +1,21 @@
-# TrajectoryBot — differentiable-simulation RL for orbital maneuvers
+# TrajectoryBot: differentiable-simulation RL for orbital maneuvers
 
-A from-scratch orbital-dynamics stack (no Basilisk, no poliastro) and a
-policy-gradient agent that learns spacecraft maneuvers by **backpropagating
-through the physics**, benchmarked against analytic transfers — with every
-claim re-verified at high fidelity before it's stated.
+TrajectoryBot is a from-scratch orbital-dynamics stack (no Basilisk, no
+poliastro) and a policy-gradient agent that learns spacecraft maneuvers by
+backpropagating through the physics. Results are benchmarked against analytic
+transfers, and every claim is re-verified at high fidelity before it is stated.
 
 <p align="center">
   <img src="docs/media/maneuver.gif" width="420" alt="policy flying a circularization maneuver"/>
 </p>
 
-The agent is a small MLP (multi-layer perceptron) at the **decision layer
-only**: every 200 s it emits a thrust direction (in the orbit frame) and a
-throttle; a deterministic pointing controller slews the spacecraft and a
-quaternion rigid-body integrator does the physics. The policy never touches
-attitude directly — burn *planning* is learned, burn *execution* is classical
-GNC (guidance, navigation, and control).
+The agent is a 13 -> 128 -> 128 -> 4 tanh MLP (multi-layer perceptron), trained
+end to end through the physics, and it works at the decision layer only. Every
+200 s it emits a thrust direction (in the orbit frame) and a throttle. A
+deterministic pointing controller slews the spacecraft, and a quaternion
+rigid-body integrator does the physics. The policy never touches attitude
+directly: burn *planning* is learned, and burn *execution* is classical GNC
+(guidance, navigation, and control).
 
 ```mermaid
 flowchart LR
@@ -25,12 +26,11 @@ flowchart LR
     L -.->|"∂loss/∂θ through the whole rollout"| P
 ```
 
-The whole policy is a tiny **13 → 128 → 128 → 4** tanh MLP, trained end-to-end
-through the physics. Its weights are three unremarkable matrices; what matters is
-the *control law* they encode. Reading the trained policy back out — sampling its
-commanded thrust around an orbit, and measuring which inputs move the throttle —
-shows it rediscovered the textbook maneuver on its own: **coast, then burn
-prograde at apoapsis, keyed almost entirely on the radius error** — never told to.
+The weights are three matrices; the control law they encode can be read back
+out of the trained policy by sampling its commanded thrust around an orbit and
+measuring which inputs move the throttle. Without being told, the policy
+rediscovered the textbook maneuver: coast, then burn prograde at apoapsis,
+keyed almost entirely on the radius error.
 
 <p align="center">
   <img src="docs/media/control_law.png" width="880" alt="left: the policy's commanded thrust around an eccentric orbit — coasting most of the way, then a prograde burn at apoapsis; right: input attribution bars showing the throttle keys mostly on radius error"/>
@@ -49,111 +49,119 @@ prograde at apoapsis, keyed almost entirely on the radius error** — never told
 | Oracle it improves on | scripted analytic expert imitated at 79.9% | same fresh set |
 | Sim gaming ruled out | 0 of 4096 episodes beat the admissible tolerance-box bound | same probe, both baselines |
 
-Honest framing: the agent **matches** the analytic transfer's fuel cost while
-running the full closed-loop attitude + finite-burn pipeline; it does not yet
-beat it. The tolerance box admits solutions up to ~15% cheaper than exact
-circularization — that quantified headroom is the open research target, and
-the verification harness exists precisely so any future "beats the baseline"
-claim survives scrutiny (integrator-energy audit, float64 re-flight,
-clamp-region exclusion, per-geometry closed-form baselines).
+The agent matches the analytic transfer's fuel cost while running the full
+closed-loop attitude and finite-burn pipeline. It does not yet beat it. The
+tolerance box admits solutions up to ~15% cheaper than exact circularization,
+and that headroom is the open research target. The verification harness
+(integrator-energy audit, float64 re-flight, clamp-region exclusion,
+per-geometry closed-form baselines) exists so that any future "beats the
+baseline" claim survives scrutiny.
 
-Scope: the headline policy above circularizes at its own apoapsis (target
-radius = initial apoapsis). Generalizing across *commanded* target radii —
-a degeneracy where that specialist collapses out-of-distribution (~18%
-success once the target leaves its trained radius) — is solved separately.
-A target-conditioned scripted expert (a two-apse tangential controller that
-drives both apses to the commanded radius) DAgger'd into the same
-13→128→128→4 network reaches **~99% success across commanded radii spanning
-±15% of apoapsis** on fresh 4096-episode sets. The cause was not network
-capacity or optimization but the *imitation source* — the specialist lineage
-was cloned from a fixed-target expert and had never imitated tracking. See
+The headline policy circularizes at its own apoapsis (target radius = initial
+apoapsis). Out of distribution it collapses: success falls to ~18% once the
+commanded target leaves its trained radius. Generalizing across commanded
+target radii is solved separately. A target-conditioned scripted expert (a
+two-apse tangential controller that drives both apses to the commanded radius),
+DAgger'd into the same 13 -> 128 -> 128 -> 4 network, reaches ~99% success
+across commanded radii spanning ±15% of apoapsis on fresh 4096-episode sets.
+The cause of the collapse was the *imitation source*: the specialist lineage
+was cloned from a fixed-target expert and had never imitated tracking. Network
+capacity and optimization were not at fault. See
 [`scripts/dagger_target_jax.py`](scripts/dagger_target_jax.py).
 
 <p align="center">
   <img src="docs/media/trajectory.png" width="820" alt="one episode: path and orbital elements"/>
 </p>
 
-The final policy solves the distribution, not one lucky episode. Forty
-random start orbits, each flown to termination, coloured by whether the
-finish landed inside the 5% tolerance box:
+The final policy solves the start-orbit distribution. The figure below shows
+forty random start orbits, each flown to termination and colored by whether
+the finish landed inside the 5% tolerance box.
 
 <p align="center">
   <img src="docs/media/generalization.png" width="480" alt="40 random start orbits flown by the final policy, solved vs missed"/>
 </p>
 
-## Why differentiable simulation
+## Differentiable simulation vs model-free RL
 
-Model-free RL was given every chance and walled out; exploiting the known,
-exactly-differentiable dynamics wins by an order of magnitude (2-D milestone,
-identical env):
+On the 2-D milestone, in an identical environment, model-free RL was
+given every chance and still stalled, and exploiting the known, exactly
+differentiable dynamics wins by an order of magnitude:
 
 | Method | Success | Δv vs optimal |
 |---|---|---|
 | Scripted analytic expert | 100% | 1.00 |
-| Cold PPO (model-free, 8 runs) | 0–3% | — |
+| Cold PPO (model-free, 8 runs) | 0–3% | n/a |
 | Behavior cloning | ~16% | ~1.37 |
 | DAgger | ~45% | ~1.5 |
 | **Diff-sim policy gradient** | **81%** | 1.26 |
 
-In 3-D, differentiable-sim refinement then climbs *past* the imitation oracle
-it started from — each point is the fresh 4096-episode success of a
-checkpoint along the campaign:
+In 3-D, differentiable-sim refinement climbs *past* the imitation oracle it
+started from. Each point is the fresh 4096-episode success of a checkpoint
+along the campaign:
 
 <p align="center">
   <img src="docs/media/progression.png" width="720" alt="fresh-set success climbing from the imitation oracle across the campaign"/>
 </p>
 
-The 3-D stack ports the hot path to **JAX/XLA** (`scripts/jaxsim.py`):
-`lax.scan` + `jit(value_and_grad)` over the full 1200-substep rollout,
-numerically exact against the torch reference and **~50× faster** on a
-consumer GPU — which is what made the research loop below possible.
+The 3-D stack ports the hot path to JAX/XLA (`scripts/jaxsim.py`): `lax.scan` +
+`jit(value_and_grad)` over the full 1200-substep rollout. It is numerically
+exact against the torch reference and ~50× faster on a consumer GPU, and that
+speedup made the research loop below possible.
 
-## The part that was actually hard
+## Heavy-tailed gradients
 
-Backprop-through-physics gradients are **heavy-tailed**: one episode in a
-few hundred carries a gradient norm of 1e12–1e19 (finite, not NaN) and a
-single Adam step can erase 12 points of success. Getting from "imitates the
-oracle at 80%" to "92% and stable" was optimizer forensics, run as
-pre-registered hypothesis-refutation rounds (30+, logged verbatim):
+Backprop-through-physics gradients are heavy-tailed. One episode in a few
+hundred carries a gradient norm of 1e12–1e19 (finite, not NaN), and a single
+Adam step can erase 12 points of success. Getting from imitating the oracle at
+80% to 92% and stable took optimizer forensics, run as pre-registered
+hypothesis-refutation rounds (30+, logged verbatim).
 
 <p align="center">
   <img src="docs/media/training-curve.png" width="820" alt="same seed, four aggregation strategies"/>
 </p>
 
-Same start checkpoint, same seed — only the gradient aggregation differs.
+The runs share a start checkpoint and seed. Only the gradient aggregation
+differs.
 
-And here is what that refinement buys on a single episode — the *same* start
-orbit flown by four training stages, imitation → refined, cycling so you can
-watch the path tighten onto the target ring:
+On a single episode, the animation below flies the same start orbit at four
+training stages, from imitation to refined, and shows the path tightening onto
+the target ring:
 
 <p align="center">
   <img src="docs/media/learning.gif" width="380" alt="the same start orbit flown at four training stages"/>
 </p>
 
-The playbook that survived: **measure the per-episode norm distribution,
-delete the monster tail (trimmed mean), clip survivors at the measured p90,
-bank progress with an EMA (exponential moving average) policy, polish at low
-lr**. The failure modes en route (truncation bias in short-horizon
-backpropagation through time, absorbing-state mismatches,
-potential-shaping traps that pay for zero progress, a normalize-epsilon that
-seeded 1e6 gradients at every coast decision) are documented in
+The training recipe that survived:
+
+1. Measure the per-episode gradient-norm distribution.
+2. Delete the extreme tail (trimmed mean).
+3. Clip the survivors at the measured p90.
+4. Bank progress with an EMA (exponential moving average) policy.
+5. Polish at a low learning rate.
+
 [`docs/EXPERIMENTS_3D.md`](docs/EXPERIMENTS_3D.md) (3-D campaign) and
-[`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) (2-D milestone).
+[`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) (2-D milestone) document the
+failure modes found along the way: truncation bias in short-horizon
+backpropagation through time, absorbing-state mismatches, potential-shaping
+traps that pay for zero progress, and a normalize-epsilon that seeded 1e6
+gradients at every coast decision.
 
-## Beyond circularize: the research frontier
+## Lunar capture and J2 phasing
 
-The same backprop-through-physics approach extends to multi-body dynamics and to
-maneuvers where a fidelity term the textbook ignores changes the optimal strategy.
-Two recent threads (full methodology and verdicts in
-[`docs/ROADMAP.md`](docs/ROADMAP.md)):
+The same backprop-through-physics approach extends to multi-body dynamics and
+to maneuvers where a fidelity term the textbook ignores changes the optimal
+strategy. Full methodology and verdicts are in
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-**Ballistic capture at the Moon (CR3BP).** A hand-rolled differentiable
-circular-restricted three-body engine (rotating Earth–Moon frame, Jacobi constant
-conserved to ~1e-7), the stable manifold of an L2 Lyapunov orbit computed from its
-monodromy matrix (symplectic, det = 1), and a manifold-seeded transfer that arrives
-*captured* at the Moon: Moon-relative energy < 0, staying bound for **4.6 lunar
-revolutions** (~26 days, verified at dt = 5e-5) with **no capture burn**, where a
-naive departure-burn search finds none.
+### Ballistic capture at the Moon (CR3BP)
+
+A transfer seeded on the stable manifold of an L2 Lyapunov orbit arrives
+*captured* at the Moon with no capture burn: Moon-relative energy < 0, staying
+bound for 4.6 lunar revolutions (~26 days, verified at dt = 5e-5). A naive
+departure-burn search finds no such capture. The engine is a hand-rolled
+differentiable circular-restricted three-body model in the rotating Earth-Moon
+frame, conserving the Jacobi constant to ~1e-7. The manifold is computed from
+the Lyapunov orbit's monodromy matrix (symplectic, det = 1).
 
 <p align="center">
   <img src="docs/media/cr3bp_capture.png" width="860" alt="L2 stable manifold funnelling onto the Moon and a ballistic capture arc into a bound lunar orbit"/>
@@ -161,109 +169,136 @@ naive departure-burn search finds none.
   <img src="docs/media/cr3bp_capture.gif" width="360" alt="the capture arc animated into its bound lunar revolutions"/>
 </p>
 
-**Rediscovering J2 nodal-drift phasing.** For a RAAN (orbital-plane) change, the
-textbook impulsive plane change is J2-*blind* — but J2 oblateness precesses the node
-for free, faster at lower altitude. A diff-sim policy minimizing true Δv over J2-on
-dynamics, with no maneuver structure baked in, **rediscovers the operational phasing
-technique**: dive to a lower altitude, let the node drift faster, return. It reaches
-the target node for ~0.88× the Δv of naive passive waiting at 30°, falling to a
-quarter–half at 60–90° (the bigger the node change, the more the dive pays) — and
-lands within ~10–15% of an *analytic* optimization of that same dive-drift strategy
-(which is slightly cheaper still). So this is autonomous rediscovery of a known
-technique from the raw objective, **not a novel beat**: the same genre as the agent
+The capture runs in the idealized CR3BP and does not yet use real JPL
+ephemerides.
+
+### Rediscovering J2 nodal-drift phasing
+
+A diff-sim policy minimizing true Δv over J2-on dynamics, with no maneuver
+structure baked in, rediscovers the operational phasing technique for a RAAN
+(orbital-plane) change: dive to a lower altitude, let the node drift faster,
+return. The textbook impulsive plane change is J2-*blind*, while J2 oblateness
+precesses the node for free, faster at lower altitude.
+
+The policy reaches the target node for ~0.88× the Δv of naive passive waiting
+at 30°, falling to a quarter to a half at 60–90°. The bigger the node change,
+the more the dive pays. It lands within ~10–15% of an *analytic* optimization
+of the same dive-drift strategy, which is slightly cheaper still. The result is
+an autonomous rediscovery of a known technique from the raw objective and does
+not beat the analytic optimum. It belongs in the same class as the agent
 rediscovering the raise-to-plane-change trick elsewhere in the project.
 
 <p align="center">
   <img src="docs/media/j2_beat.png" width="960" alt="the policy dives to speed J2 nodal drift, reaches the target node passive falls short of, and matches the analytic dive optimum well under passive"/>
 </p>
 
-Both results come with their deflations attached: the capture is in the idealized
-CR3BP (not real JPL ephemerides yet); the J2 result is a rediscovery that an
-analytic dive beats, and its low-thrust Δv is idealized (impulsive-per-step). The
-regimes where the savings vanish (small node angles, budgets so long that passive
-is free) are recorded per build.
+The J2 result's low-thrust Δv is idealized (impulsive-per-step). The regimes
+where the savings vanish (small node angles, budgets so long that passive is free) are
+recorded per build.
 
 ## Gravity assists in the real solar system
 
-The circularize and J2 experiments run in a two-body field. The next tier flies the
-spacecraft through the *actual* solar system: a JAX rollout under many point-mass
-bodies whose positions come from JPL Horizons, differentiable end to end, so
-`∂(miss distance)/∂(maneuver)` drops out of the same backprop. The engine is
-checked offline before any claim is made — the two-body Kepler limit closes to
-`|Δr|/a = 9e-13`, energy holds to `7e-15`, and from a cold `Δv = 0` start the
-optimizer recovers the analytic Lambert transfer to `1.2e-11` relative. Bodies are
-held fixed within each RK4 step, which is accurate at heliocentric scale but not for
-close geocentric orbits (Earth moves ~9000 km per step), so those use substep
-interpolation.
+The circularize and J2 experiments run in a two-body field. This tier flies the
+spacecraft through the *actual* solar system. A JAX rollout under many
+point-mass bodies, with positions from JPL Horizons, is differentiable end to
+end, so `∂(miss distance)/∂(maneuver)` drops out of the same backprop.
+
+The engine is checked offline before any claim is made. The two-body Kepler
+limit closes to `|Δr|/a = 9e-13`, energy holds to `7e-15`, and from a cold
+`Δv = 0` start the optimizer recovers the analytic Lambert transfer to
+`1.2e-11` relative. Bodies are held fixed within each RK4 step. That is
+accurate at heliocentric scale but not for close geocentric orbits (Earth moves
+~9000 km per step), so those use substep interpolation.
 
 <p align="center">
   <img src="docs/media/ephemeris_tour.png" width="480" alt="a 1:2 resonant leg launched from the real Earth, flown under the Sun and real perturbers, returning near Earth"/>
 </p>
 
-**Inclination is free up to a ceiling.** The reachable inclination from gravity
-assists alone is `arcsin(v∞/v_P)` — set by the hyperbolic excess speed `v∞` and the
-planet's orbital speed `v_P`, and independent of the planet's mass. A sequence of
-same-body flybys (the crank) walks inclination up to that ceiling at fixed `v∞`; a
-heavier or closer planet bends the velocity more per pass, so it needs fewer flybys
-(Jupiter one, Venus about five — the diff-sim Venus tour reaches 32.8° against a 32.9°
-ceiling, the same shape as Solar Orbiter's ~7–8 Venus assists to ~33°). The
-mission-design reading is `v∞ ≥ v_P·sin(i)`: a polar orbit needs `v∞` at least the
-planet's orbital speed. Given only a target inclination and a Δv-minimizing objective
-— never told about leverage or cranking, seeded at zero leverage — the backprop
-optimizer *discovers* the textbook plan: crank when the target sits under the ceiling,
-and pump `v∞` first (V∞-leveraging) when it sits above, spending within 1% of the
-analytic budget. Reaching the inclination that way costs 2–12× less Δv than a direct
-plane change.
+### Inclination ceiling
+
+Gravity assists alone can reach inclinations up to `arcsin(v∞/v_P)`, set by the
+hyperbolic excess speed `v∞` and the planet's orbital speed `v_P` and
+independent of the planet's mass. A sequence of same-body flybys (the crank)
+walks inclination up to that ceiling at fixed `v∞`. A heavier or closer planet
+bends the velocity more per pass, so it needs fewer flybys: Jupiter one, Venus
+about five. The diff-sim Venus tour reaches 32.8° against a 32.9° ceiling, the
+same shape as Solar Orbiter's ~7–8 Venus assists to ~33°. For mission design
+the condition reads `v∞ ≥ v_P·sin(i)`: a polar orbit needs `v∞` at least the
+planet's orbital speed.
+
+Given only a target inclination and a Δv-minimizing objective, never told about
+leverage or cranking and seeded at zero leverage, the backprop optimizer
+*discovers* the textbook plan. It cranks when the target sits under the
+ceiling and pumps `v∞` first (`V∞-leveraging`) when the target sits above,
+spending within 1% of the analytic budget. Reaching the inclination that way
+costs 2–12× less Δv than a direct plane change.
 
 <p align="center">
   <img src="docs/media/inclination_ceiling.png" width="900" alt="the arcsin(v-inf / v-P) ceiling with the crank climbing to it, and per-planet flyby counts"/>
 </p>
 
-**The leverage is real, and the real Earth caps it.** A small burn at apoapsis changes
-`v∞` at the next Earth encounter by far more than the burn itself — leverage L ≈ 15–37
-measured against the real ephemeris. But the same leverage that turns a 5 m/s burn into
-~75 m/s of `v∞` also throws the return off the real Earth, and holding the re-encounter
-inside Earth's sphere of influence caps the pump near 0.085 km/s of `v∞` per leg. A
-single-planet staircase creeps from `v∞` 8 to ~9.7 over ~18 legs and then stalls. Four
-rounds pinned down why, each correcting the one before: the pump *does* survive real
-ephemeris per leg (an earlier "it's dead" reading had used a burn ~20× too large); the
-cap is not a quirk of one resonance (every resonance gives the same ~0.1 km/s/leg); it
-is a one-control limit (a single apoapsis burn can't both pump `v∞` and re-aim the
-encounter); and the obvious second control — bending the flyby — turns out to be
-mis-timed, because it sets the outgoing orbit *before* the burn de-phases the return, so
-it can't fix it. The correctly-timed correction acts after the burn, and it does break
-the cap — but only by trading Δv one-for-one, no longer leveraged. The cheap escape is a
-second planet: inner planets pump faster (shorter years, more encounters), and the
-handoff between planets rides a conserved quantity (the Tisserand parameter), so it
-costs nothing.
+### Leverage and the Earth cap
+
+A small burn at apoapsis changes `v∞` at the next Earth encounter by far more
+than the burn itself: leverage L ≈ 15–37, measured against the real ephemeris.
+The same leverage that turns a 5 m/s burn into ~75 m/s of `v∞` also throws the
+return off the real Earth. Holding the re-encounter inside Earth's sphere of
+influence caps the pump near 0.085 km/s of `v∞` per leg. A single-planet
+staircase creeps from `v∞` 8 to ~9.7 over ~18 legs and then stalls.
+
+Successive rounds pinned down the cause, each correcting the one before:
+
+1. The pump *does* survive real ephemeris per leg. An earlier "it's dead"
+   reading had used a burn ~20× too large.
+2. The cap is not a quirk of one resonance. Every resonance gives the same
+   ~0.1 km/s/leg.
+3. The cap is a one-control limit. A single apoapsis burn can't both pump `v∞`
+   and re-aim the encounter.
+4. The obvious second control, bending the flyby, is mis-timed. It sets the
+   outgoing orbit *before* the burn de-phases the return, so it can't fix the
+   return.
+
+The correctly timed correction acts after the burn and does break the cap, but
+only by trading Δv one-for-one, with no leverage. The cheap escape is a second
+planet. Inner planets pump faster (shorter years, more encounters), and the
+handoff between planets rides a conserved quantity (the Tisserand parameter),
+so it costs nothing.
 
 <p align="center">
   <img src="docs/media/leverage_cap.png" width="900" alt="left: a few m/s of apoapsis burn moves v-inf by ~100 m/s; right: pumping harder throws the re-encounter past Earth's SOI, capping the per-leg pump"/>
 </p>
 
-**Making discovery work on the real ephemeris took a reformulation.** The obvious
-differentiable setup — solve each leg as a boundary-value problem (Lambert) and penalize
-flyby mismatch — fails in an instructive way: the resonant-return legs a deep tour needs
-sit at near-singularities of the boundary-value problem, gradients there spike past
-`1e18`, and the optimizer climbs into them, reporting huge `v∞` while quietly violating
-the flyby physics. The fix is structural, not a tuning knob: propagate each leg
-*forward* with a differentiable Kepler propagator (no boundary-value solve anywhere),
-make the flyby a bounded rotation of `v∞` (so `|v∞|` is conserved exactly — there is no
-constraint left to cheat), and close each encounter with the real moving planet by
-Gauss-Newton inside the differentiable loop. Encounters then close to meters against
-the real ephemeris, and gradients flow end to end.
+### Forward propagation on the real ephemeris
 
-**The tour that architecture finds.** From a 5.95 km/s launch, tree search over the
-closed continuations reaches `v∞ = 16.3 km/s` in four pumping flybys of Venus and Earth
-— every encounter hit ballistically, with no deterministic maneuvers at all — and then,
-once the pump saturates, five more Venus flybys crank the inclination from 1° to 27.1°,
-which is 97% of the `arcsin(v∞/v_P)` ceiling. The crank pays a tax the idealized theory
-misses: each flyby must also re-hit the real moving planet, which pins about half of
-every turn, so the walk takes ~5 encounters instead of the ideal ~2 — slower, but the
-ceiling is still reached. And it is not a lucky date: across eight launch epochs
-spanning two synodic cycles, five pump to 15–18 km/s (median 15.3), two have no viable
-cheap launch at all, and one launches fine but never climbs — the failure modes are
-part of the result.
+Discovery on the real ephemeris took a reformulation. The obvious
+differentiable setup solves each leg as a boundary-value problem (Lambert) and
+penalizes flyby mismatch. It fails because the resonant-return legs a deep tour
+needs sit at near-singularities of the boundary-value problem. Gradients there
+spike past `1e18`, and the optimizer climbs into them, reporting huge `v∞`
+while violating the flyby physics.
+
+The reformulation propagates each leg *forward* with a differentiable Kepler
+propagator, with no boundary-value solve anywhere. The flyby is a bounded
+rotation of `v∞`, so `|v∞|` is conserved exactly and no constraint is left to
+cheat. Each encounter with the real moving planet is closed by Gauss-Newton
+inside the differentiable loop. Encounters then close to meters against the
+real ephemeris, and gradients flow end to end.
+
+### The pump-and-crank tour
+
+From a 5.95 km/s launch, tree search over the closed continuations reaches
+`v∞ = 16.3 km/s` in four pumping flybys of Venus and Earth, hitting every
+encounter ballistically with no deterministic maneuvers at all. Once the pump
+saturates, five more Venus flybys crank the inclination from 1° to 27.1°, which
+is 97% of the `arcsin(v∞/v_P)` ceiling.
+
+The crank pays a cost the idealized theory misses. Each flyby must also re-hit
+the real moving planet, which pins about half of every turn, so the walk takes
+~5 encounters instead of the ideal ~2 and still reaches the ceiling. The result
+does not depend on a lucky date. Across eight launch epochs spanning two
+synodic cycles, five pump to 15–18 km/s (median 15.3), two have no viable cheap
+launch at all, and one launches fine but never climbs. These failures are
+reported as part of the result.
 
 <p align="center">
   <img src="docs/media/pump_crank_path.png" width="900" alt="the flown tour: top-down heliocentric view of the pump spiral with legs colored by v-inf, and edge-on view of the crank tilting the orbit out of the ecliptic to 27 degrees"/>
@@ -273,11 +308,12 @@ part of the result.
   <img src="docs/media/pump_crank_tour.png" width="900" alt="left: the discovered pump chain, v-inf 5.95 to 16.27 over six flybys; middle: the inclination crank walking to 97 percent of the analytic ceiling; right: final v-inf across eight launch epochs"/>
 </p>
 
-All of this is patched-conic, and it is a study of *mechanism*, not a Δv record: the
-honest headline is that a gravity-assist plane change is cheaper across the board and
-order-of-magnitude cheaper only at favorable leverage, and that an agent differentiating
-through the physics finds the strategy on its own. The full pre-registered method and
-verdicts — including the rounds that overturned earlier conclusions — are in
+The gravity-assist study is patched-conic and studies *mechanism*; it sets no
+Δv record. The headline is that a gravity-assist plane change is cheaper across
+the board but an order of magnitude cheaper only at favorable leverage, and that
+an agent differentiating through the physics finds the strategy on its own. The
+full pre-registered method and verdicts, including the rounds
+that overturned earlier conclusions, are in
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Quickstart
@@ -306,45 +342,50 @@ uv run --with jax --with matplotlib --with pillow python scripts/viz_lowthrust.p
 uv run --with jax --with astroquery --with astropy --with matplotlib python scripts/viz_campaign.py  # N-body ephemeris tour + inclination ceiling + leverage cap (needs .ephem_cache)
 ```
 
-Checkpoints and run logs are not committed (they regenerate by training); the
+Checkpoints and run logs are not committed; they regenerate by training. The
 circularize-lineage checkpoints behind the figures are published as a
-[GitHub release](../../releases/tag/readme-checkpoints). `docs/media/` holds the
-small rendered figures only.
+[GitHub release](../../releases/tag/readme-checkpoints). `docs/media/` holds
+the small rendered figures only.
 
 ## Repository map
 
-| Path | What it is |
+| Path | Contents |
 |---|---|
 | `tbot/` | The shipped library: quaternions, 2-D/3-D dynamics, orbital elements, attitude controller, Gymnasium envs. pyright-strict. |
-| `scripts/jaxsim.py` | JAX/XLA 3-D diff-sim trainer (the research workhorse) with the full knob set. |
+| `scripts/jaxsim.py` | JAX/XLA 3-D diff-sim trainer used for the research runs, with the full knob set. |
 | `scripts/verify_probe.py` | float64/dt=1 s claim-verification harness (exact + tolerance-box baselines). |
-| `scripts/eval_probe.py`, `norm_probe.py`, `step_probe.py`, … | The measurement toolkit the optimizer forensics ran on. |
+| `scripts/eval_probe.py`, `norm_probe.py`, `step_probe.py`, and others | The measurement toolkit the optimizer forensics ran on. |
 | `ephemeris.py`, `scripts/nbody_sim.py`, `scripts/full_ephemeris_tour.py`, `leverage_anatomy.py`, `resonance_hopping.py`, `flyby_leverage.py` | The differentiable N-body / JPL-ephemeris engine and the gravity-assist study (inclination ceiling, v∞-leverage, the SOI rate cap). Each `--verify` runs offline against the cached ephemeris. |
 | `docs/EXPERIMENTS_3D.md`, `docs/EXPERIMENTS.md` | The optimizer-forensics campaign (3-D) and the 2-D milestone methodology. |
 | `docs/ROADMAP.md`, `docs/AUDIT.md` | Target maneuvers, the full gravity-assist campaign log, and the audit of the 2021 code. |
-| `docs/GRAVITY_ASSIST.md` | Reader's digest of the differentiable N-body / gravity-assist arc (the inclination ceiling, leverage, and SOI rate cap). |
-| `v2/`, `archive/` | The 2021 course project, kept as the "before" picture (excluded from CI/typing). |
+| `docs/GRAVITY_ASSIST.md` | Short summary of the differentiable N-body / gravity-assist arc (the inclination ceiling, leverage, and SOI rate cap). |
+| `v2/`, `archive/` | The 2021 course project, kept as the "before" state (excluded from CI/typing). |
 
 ## Roadmap
 
-Circularize (3-D, done) → plane change (done) → low-thrust Edelbaum spiral
-(done) → ballistic lunar capture in the CR3BP (done) → the differentiable
-N-body engine on real JPL Horizons ephemerides, and the gravity-assist
-inclination/leverage study on top of it (done, above) → the correctly-timed
-leverage correction and a multi-planet tour (open) → benchmark against
-historically flown trajectories. Any N-body fuel comparison is tested across
-solar-system phases (syzygy effects are real physics but epoch-specific), and
-gravity-assist missions are treated as a test of whether the agent can
-*discover* an assist, not as a Δv target to beat.
+- Circularize (3-D): done.
+- Plane change: done.
+- Low-thrust Edelbaum spiral: done.
+- Ballistic lunar capture in the CR3BP: done.
+- Differentiable N-body engine on real JPL Horizons ephemerides, with the
+  gravity-assist inclination/leverage study on top of it: done (described
+  above).
+- Correctly timed leverage correction and a multi-planet tour: open.
+- Benchmark against historically flown trajectories.
+
+Any N-body fuel comparison is tested across solar-system phases, because
+syzygy effects are real physics but epoch-specific. Gravity-assist missions
+test whether the agent can *discover* an assist and are not used as Δv targets
+to beat.
 
 ## Provenance
 
-Started in 2021 as a graduate astrodynamics course project that trained but
-never converged — the original report and code are preserved in
-[`docs/final-report.md`](docs/final-report.md), `v2/`, and `archive/`, and
-the revival began by auditing why it failed
-([`docs/AUDIT.md`](docs/AUDIT.md)). Everything physics is hand-rolled on
-purpose: the point is to own the whole stack from the RK4 up.
+TrajectoryBot started in 2021 as a graduate astrodynamics course project that
+trained but never converged. The original report and code are preserved in
+[`docs/final-report.md`](docs/final-report.md), `v2/`, and `archive/`, and the
+revival began by auditing why it failed ([`docs/AUDIT.md`](docs/AUDIT.md)).
+All the physics is hand-rolled on purpose, to own the whole stack from the RK4
+up.
 
 MIT licensed. See [CONTRIBUTING.md](CONTRIBUTING.md) for how changes are
 evaluated (pre-registered experiments, verification-fidelity claims).
